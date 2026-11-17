@@ -1,0 +1,24 @@
+name: Lint & Plot Smoke Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Run static gate, privacy check, and SVG plot smoke test
+        run: uv run skills/study-feedback/scripts/lint_study.py --dist-check

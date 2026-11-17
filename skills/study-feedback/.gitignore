@@ -1,0 +1,11 @@
+local_config.json
+evals/
+*golden_cases*.md
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
