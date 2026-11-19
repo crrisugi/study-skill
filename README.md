@@ -68,7 +68,7 @@ npx skills add crrisugi/study-skill --skill study
    - 单点概念或单步推导自动走**靶向直答**（一屏最小算例答清）；整节论文、多步推导或源码模块自动走**分卡伴学**（首轮选定深度档位 $\rightarrow$ 按需摸底与先修分流 $\rightarrow$ 排定蓝图与统一小算例 $\rightarrow$ 草稿纸推演与 `.svg` 矢量配图 $\rightarrow$ 确认后落盘笔记）。
 2. **记录伴学失真反馈（`/study-feedback`）**：
    - 伴学过程中若遇到分卡失当、跳步或摸底跑偏，直接输入 `/study-feedback`；
-   - 默认开源模式下自动生成脱敏的五要素 Markdown 代码块，可直接粘贴提交至本仓库 GitHub Issues；维护者亦可在 `skills/study-feedback/` 下复制 `local_config.example.json` 为 `local_config.json`（已被 `.gitignore` 忽略），将反馈沉淀至本地私有账本并通过 `/study-feedback 复盘` 原地迭代。
+   - 默认开源模式下生成脱敏的五要素 Markdown 代码块并探测本机 `gh` 登录状态，可按用户选择通过 `gh` 一键提交至本仓库 GitHub Issues、直接匿名推送反馈给维护者，或保留代码块手动提交；维护者亦可在 `skills/study-feedback/` 下复制 `local_config.example.json` 为 `local_config.json`（已被 `.gitignore` 忽略），将反馈沉淀至本地私有账本并通过 `/study-feedback 复盘` 原地迭代。
 
 ## 贡献与本地门禁校验
 
