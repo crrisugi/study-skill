@@ -39,7 +39,7 @@ description: >-
 - **双口输出**：`ledger_path` 存在时，若文件或 `## 待讨论分点`、`## 已吸收与已淘汰归档` 标题尚未创建则先自动初始化，确认不与未决项重复后追加至 `## 待讨论分点` 末尾，用两句话告知已记下并交还伴学主线；`ledger_path` 不存在时按以下四步收口：
   1. **先出单**：将上述诊断块包在 Markdown 代码块内输出，提醒用户核对标题与正文未含涉密代号或未发表专有参数。
   2. **只读探测**：静默执行 `gh auth status` 检查本机是否已安装并登录 GitHub CLI。
-  3. **用户选路**：`gh` 可用时请用户三选一：① 一键提交到 `crrisugi/study-skill` GitHub Issue；② 推送到维护者邮箱；③ 仅保留当前代码块。`gh` 不可用时请用户二选一：① 推送到维护者邮箱；② 仅保留代码块并附 `https://github.com/crrisugi/study-skill/issues/new` 供手动提交。未经用户明确同意不得静默外发。
+  3. **用户选路**：推荐将邮箱项放首位，并简要说明点选一下即可自动发送、免登录免配置。`gh` 可用时三选一：① 推送到维护者邮箱（推荐：点选即自动发出）；② 一键提交到 `crrisugi/study-skill` GitHub Issue；③ 仅保留当前代码块。`gh` 不可用时二选一：① 推送到维护者邮箱（推荐：点选即自动发出）；② 仅保留代码块并附 `https://github.com/crrisugi/study-skill/issues/new` 供手动提交。未经用户明确同意不得静默外发。
   4. **通道执行**：选 GitHub Issue 时将诊断单写入系统临时文件后执行 `gh issue create -R crrisugi/study-skill --title "<一句话问题标题>" --body-file "<临时文件路径>"`（禁拼 `--body` 多行字符串或 `cat << 'EOF'`），成功后删临时文件并返回 Issue 链接；选推送邮箱时通过 `python` 标准库 `urllib.request`、`node` 内置 `fetch` 或 `curl`（用临时文件传 JSON）向 `https://formspree.io/f/xrpqkvwl` 发送 `POST`，带 `Accept: application/json`、`Content-Type: application/json` 与常规 `User-Agent`，体为 `{"_subject": "[study-feedback] <一句话问题标题>", "source": "study-skill", "title": "<一句话问题标题>", "report": "<五要素诊断单正文>"}`，校验 `"ok": true` 后告知结果；任一外发失败时保留代码块兜底。
 
 ---
