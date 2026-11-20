@@ -11,7 +11,8 @@ description: >-
 
 ## 关联路径与模式分流
 
-- **路径解析**：待维护的 `study` 技能默认位于同级目录 `../study/`，含 `SKILL.md`、`references/*.md` 与 `scripts/plot_helper.py`；静态门禁位于本技能 `scripts/lint_study.py`。启动时先检查本技能目录是否存在 `local_config.json`：存在则读取其中的本地账本路径 `ledger_path`、文风卡路径 `style_card_path` 与表征准入基准路径 `golden_cases_path`；不存在则按开源外部环境处理。
+- **路径解析**：待维护的 `study` 技能默认位于同级目录 `../study/`，含 `SKILL.md`、`VERSION`、`workflows/*.md`、`references/*.md` 与 `scripts/plot_helper.py`、`scripts/check_update.py`；静态门禁位于本技能 `scripts/lint_study.py`。启动时先检查本技能目录是否存在 `local_config.json`：存在则读取其中的本地账本路径 `ledger_path`、文风卡路径 `style_card_path` 与表征准入基准路径 `golden_cases_path`；不存在则按开源外部环境处理。
+- **版本提示**：若存在 `../study/scripts/check_update.py`，结束前可顺带运行 `uv run ../study/scripts/check_update.py --passive`；有新版则在末尾用一行告知版本号与对应升级命令，绝不自动覆盖本地文件。
 - **模式分流**：
   1. **模式一（现场诊断留痕）**：输入 `/study-feedback` 无附加参数，或仅附针对刚才伴学体验的简短说明时进入。
   2. **模式二（集中复盘迭代）**：输入 `/study-feedback 复盘` 或 `/study-feedback review` 时进入。

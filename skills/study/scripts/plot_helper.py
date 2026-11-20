@@ -12,9 +12,7 @@
 - save_svg(fig, svg_path=None) -> str: 紧凑导出瘦身 .svg（自动建目录），并返回精简内联 <svg> 字符串
 """
 from __future__ import annotations
-import io
-import pathlib
-import re
+import atexit, io, pathlib, re
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -30,14 +28,8 @@ SEQ_CMAP = LinearSegmentedColormap.from_list("study_seq", ["#FFFFFF", COLORS["bl
 def apply_rc() -> None:
     plt.rcParams.update({
         "font.sans-serif": ["PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "Source Han Sans CN", "WenQuanYi Micro Hei", "DejaVu Sans", "sans-serif"],
-        "mathtext.fontset": "dejavusans",
-        "axes.unicode_minus": False,
-        "svg.fonttype": "none",
-        "font.size": 10,
-        "axes.edgecolor": "#94A3B8",
-        "grid.color": "#E2E8F0",
-        "grid.linestyle": "--",
-        "grid.alpha": 0.75,
+        "mathtext.fontset": "dejavusans", "axes.unicode_minus": False, "svg.fonttype": "none", "font.size": 10,
+        "axes.edgecolor": "#94A3B8", "grid.color": "#E2E8F0", "grid.linestyle": "--", "grid.alpha": 0.75,
     })
 
 
@@ -45,9 +37,7 @@ def _style_2d_ax(ax) -> None:
     if hasattr(ax, "zaxis") or getattr(ax, "name", "") == "polar":
         ax.grid(True)
         return
-    for side in ("top", "right"):
-        if side in ax.spines:
-            ax.spines[side].set_visible(False)
+    [ax.spines[s].set_visible(False) for s in ("top", "right") if s in ax.spines]
     ax.grid(True)
 
 
@@ -121,15 +111,14 @@ def heatmap(ax, data, mask=None, fmt: str = ".2g", vcenter_zero: bool = True, cm
         im = ax.imshow(safe, cmap=cmap or SEQ_CMAP, vmin=0.0, vmax=vmax_abs, aspect="equal")
     ax.grid(False)
     nrows, ncols = arr.shape
-    for r in range(nrows):
-        for c in range(ncols):
-            if mask_arr[r, c]:
-                ax.add_patch(patches.Rectangle((c - 0.5, r - 0.5), 1, 1, facecolor="#E2E8F0", edgecolor="#94A3B8", hatch="///", lw=0.8))
-                if nrows * ncols <= 36:
-                    ax.text(c, r, "-∞" if np.isneginf(arr[r, c]) else "MASK", ha="center", va="center", color="#475569", fontsize=8.5)
-            elif nrows * ncols <= 36:
-                txt_c = "white" if abs(arr[r, c]) > 0.62 * vmax_abs else "#0F172A"
-                ax.text(c, r, format(arr[r, c], fmt), ha="center", va="center", color=txt_c, fontsize=9.5)
+    for r, c in np.ndindex(nrows, ncols):
+        if mask_arr[r, c]:
+            ax.add_patch(patches.Rectangle((c - 0.5, r - 0.5), 1, 1, facecolor="#E2E8F0", edgecolor="#94A3B8", hatch="///", lw=0.8))
+            if nrows * ncols <= 36:
+                ax.text(c, r, "-∞" if np.isneginf(arr[r, c]) else "MASK", ha="center", va="center", color="#475569", fontsize=8.5)
+        elif nrows * ncols <= 36:
+            txt_c = "white" if abs(arr[r, c]) > 0.62 * vmax_abs else "#0F172A"
+            ax.text(c, r, format(arr[r, c], fmt), ha="center", va="center", color=txt_c, fontsize=9.5)
     return im
 
 
@@ -148,3 +137,14 @@ def save_svg(fig, svg_path: str | pathlib.Path | None = None) -> str:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(svg_str + "\n", encoding="utf-8")
     return svg_str
+
+
+def _notify_update() -> None:
+    try:
+        import check_update
+        check_update.maybe_notify(pathlib.Path(__file__).resolve().parents[1])
+    except Exception:
+        pass
+
+
+atexit.register(_notify_update)

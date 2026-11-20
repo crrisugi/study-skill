@@ -25,10 +25,14 @@ FEEDBACK_DIR = pathlib.Path(__file__).resolve().parents[1]
 STUDY_DIR = pathlib.Path(os.environ.get("STUDY_DIR") or (FEEDBACK_DIR.parent / "study"))
 REPO_ROOT = STUDY_DIR.parent.parent if STUDY_DIR.parent.name == "skills" else None
 STUDY_MD = STUDY_DIR / "SKILL.md"
+STUDY_VERSION = STUDY_DIR / "VERSION"
 FEEDBACK_MD = FEEDBACK_DIR / "SKILL.md"
 REFS_DIR = STUDY_DIR / "references"
+WORKFLOWS_DIR = STUDY_DIR / "workflows"
 SCRIPTS_DIR = STUDY_DIR / "scripts"
 PLOT_HELPER = SCRIPTS_DIR / "plot_helper.py"
+CHECK_UPDATE = SCRIPTS_DIR / "check_update.py"
+SEMVER_RE = re.compile(r"^[vV]?(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$")
 
 SLASH_CMD_RE = re.compile(
     r"(?<![A-Za-z0-9_.:/<>\\~-])/(?!(?:study(?:-feedback)?|tmp|home|Users|usr|etc|var|dev|bin)\b)([a-z][a-z0-9_-]{2,})\b"
@@ -94,9 +98,34 @@ def check_docs_and_assets() -> list[str]:
         if slots != ["1", "2", "3", "4"]:
             errs.append(f"{ref.name} 未严格遵循四槽同构标题 (## 1. ~ ## 4.): 实测 {slots}")
 
-    for req_asset in (PLOT_HELPER, SCRIPTS_DIR / "pyproject.toml", SCRIPTS_DIR / "uv.lock"):
+    disk_wfs = {p.name for p in WORKFLOWS_DIR.glob("*.md")} if WORKFLOWS_DIR.exists() else set()
+    linked_wfs = set(re.findall(r"\(workflows/([a-zA-Z0-9_-]+\.md)\)", study_raw))
+    if disk_wfs != linked_wfs:
+        missing_wfs = sorted(linked_wfs - disk_wfs)
+        unregistered_wfs = sorted(disk_wfs - linked_wfs)
+        if missing_wfs:
+            errs.append(f"SKILL.md 流程链接存在断链文件: {missing_wfs}")
+        if unregistered_wfs:
+            errs.append(f"workflows/ 存在未注册到 SKILL.md 的孤儿文件: {unregistered_wfs}")
+    for wf in sorted(WORKFLOWS_DIR.glob("*.md")) if WORKFLOWS_DIR.exists() else []:
+        wn = len(wf.read_text(encoding="utf-8").splitlines())
+        if not (20 <= wn <= 80):
+            errs.append(f"workflows/{wf.name} 行数越界: {wn} (要求 20~80)")
+
+    for req_asset in (PLOT_HELPER, CHECK_UPDATE, SCRIPTS_DIR / "pyproject.toml", SCRIPTS_DIR / "uv.lock"):
         if not req_asset.exists():
             errs.append(f"缺失 study/scripts 核心运行资产: {req_asset.name}")
+
+    if not STUDY_VERSION.exists():
+        errs.append("缺失 study/VERSION 版本号文件")
+    else:
+        study_ver = STUDY_VERSION.read_text(encoding="utf-8").strip()
+        if not SEMVER_RE.match(study_ver):
+            errs.append(f"study/VERSION 非法 semver 格式: {study_ver!r}")
+        elif REPO_ROOT and (REPO_ROOT / "VERSION").exists():
+            root_ver = (REPO_ROOT / "VERSION").read_text(encoding="utf-8").strip()
+            if root_ver != study_ver:
+                errs.append(f"仓库根目录 VERSION ({root_ver}) 与 study/VERSION ({study_ver}) 不一致")
 
     fb_gitignore = FEEDBACK_DIR / ".gitignore"
     if not fb_gitignore.exists() or "local_config.json" not in fb_gitignore.read_text(encoding="utf-8"):
@@ -107,8 +136,9 @@ def check_docs_and_assets() -> list[str]:
         if pn > 150:
             errs.append(f"plot_helper.py 行数超限: {pn} > 150")
 
+    wf_files = sorted(WORKFLOWS_DIR.glob("*.md")) if WORKFLOWS_DIR.exists() else []
     base_dir = REPO_ROOT or STUDY_DIR.parent
-    spec_docs = [STUDY_MD, FEEDBACK_MD, *sorted(REFS_DIR.glob("*.md"))]
+    spec_docs = [STUDY_MD, FEEDBACK_MD, *wf_files, *sorted(REFS_DIR.glob("*.md"))]
     for doc in spec_docs:
         raw_doc = doc.read_text(encoding="utf-8")
         prose = strip_code_and_templates(raw_doc)
@@ -126,9 +156,12 @@ def check_docs_and_assets() -> list[str]:
     username = "" if raw_user.lower() in CI_DEFAULT_USERS else raw_user
     public_files = [
         STUDY_MD,
+        STUDY_VERSION,
         FEEDBACK_MD,
+        *wf_files,
         *sorted(REFS_DIR.glob("*.md")),
         PLOT_HELPER,
+        CHECK_UPDATE,
         SCRIPTS_DIR / "pyproject.toml",
         FEEDBACK_DIR / "scripts" / "lint_study.py",
         FEEDBACK_DIR / "local_config.example.json",
@@ -136,7 +169,7 @@ def check_docs_and_assets() -> list[str]:
         FEEDBACK_DIR / ".gitignore",
     ]
     if REPO_ROOT and REPO_ROOT.exists():
-        for root_doc in ("README.md", "LICENSE", ".gitignore", ".gitattributes"):
+        for root_doc in ("README.md", "LICENSE", "CHANGELOG.md", "VERSION", ".gitignore", ".gitattributes"):
             p = REPO_ROOT / root_doc
             if p.exists():
                 public_files.append(p)
@@ -196,6 +229,7 @@ def smoke_test_plot() -> list[str]:
         )
         env = os.environ.copy()
         env["PYTHONDONTWRITEBYTECODE"] = "1"
+        env["STUDY_NO_UPDATE_CHECK"] = "1"
         if not (SCRIPTS_DIR / ".venv").exists():
             env["UV_PROJECT_ENVIRONMENT"] = str(pathlib.Path(tmp) / "venv")
         try:
@@ -214,19 +248,90 @@ def smoke_test_plot() -> list[str]:
     return []
 
 
+def smoke_test_update_checker() -> list[str]:
+    if not CHECK_UPDATE.exists():
+        return []
+    import importlib.util
+
+    prev_dont_write = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        spec = importlib.util.spec_from_file_location("study_check_update_test", CHECK_UPDATE)
+        if spec is None or spec.loader is None:
+            return ["无法加载 check_update.py 进行离线自检"]
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    finally:
+        sys.dont_write_bytecode = prev_dont_write
+
+    try:
+        assert mod.parse_semver("v0.2.0")[:3] == (0, 2, 0)
+        assert mod.is_strictly_newer("0.2.1", "0.2.0") is True
+        assert mod.is_strictly_newer("0.2.0", "0.2.0") is False
+        assert mod.is_strictly_newer("0.2.0", "0.3.0") is False
+        assert mod.is_strictly_newer("0.2.0", "0.2.0-rc.1") is True
+        assert mod.is_strictly_newer("0.2.0-rc.1", "0.2.0") is False
+        assert mod.extract_tag_from_location("https://github.com/crrisugi/study-skill/releases/tag/v0.3.0") == "v0.3.0"
+        assert mod.extract_tag_from_location("https://github.com/crrisugi/study-skill/releases") is None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            p_dir = root / ".claude" / "plugins" / "cache" / "study"
+            p_dir.mkdir(parents=True)
+            assert mod.detect_install_channel(p_dir, cwd=root)["channel"] == "plugin-managed"
+
+            proj = root / "proj"
+            proj_skill = proj / ".agents" / "skills" / "study"
+            proj_skill.mkdir(parents=True)
+            (proj / "skills-lock.json").write_text('{"version":2,"skills":{"study":{}}}', encoding="utf-8")
+            proj_ch = mod.detect_install_channel(proj_skill, cwd=proj, home_dir=root / "empty_home")
+            assert proj_ch["channel"] == "npx-skills" and proj_ch["scope"] == "project"
+
+            home = root / "home"
+            (home / ".agents").mkdir(parents=True)
+            (home / ".agents" / ".skill-lock.json").write_text('{"version":3,"skills":{"study":{}}}', encoding="utf-8")
+            g_skill = home / ".agents" / "skills" / "study"
+            g_skill.mkdir(parents=True)
+            glob_ch = mod.detect_install_channel(g_skill, cwd=root, home_dir=home)
+            assert glob_ch["channel"] == "npx-skills" and glob_ch["scope"] == "global"
+
+            git_repo = root / "study-skill"
+            (git_repo / ".git").mkdir(parents=True)
+            git_skill = git_repo / "skills" / "study"
+            git_skill.mkdir(parents=True)
+            assert mod.detect_install_channel(git_skill, cwd=root, home_dir=home)["channel"] == "git-clone"
+
+            man_skill = root / "manual" / "study"
+            man_skill.mkdir(parents=True)
+            assert mod.detect_install_channel(man_skill, cwd=root, home_dir=home)["channel"] == "manual-copy"
+    except AssertionError as err:
+        return [f"check_update 离线断言失败: {err}"]
+    except Exception as err:
+        return [f"check_update 离线自检异常: {err}"]
+    return []
+
+
 def sync_public_skills(dest_repo: pathlib.Path) -> None:
     dst_study = dest_repo / "skills" / "study"
     dst_fb = dest_repo / "skills" / "study-feedback"
-    for d in (dst_study / "references", dst_study / "scripts", dst_fb / "scripts"):
+    for d in (dst_study / "references", dst_study / "workflows", dst_study / "scripts", dst_fb / "scripts"):
         d.mkdir(parents=True, exist_ok=True)
     for stale in (dst_study / "references").glob("*.md"):
         if not (REFS_DIR / stale.name).exists():
             stale.unlink()
+    for stale in (dst_study / "workflows").glob("*.md"):
+        if not WORKFLOWS_DIR.exists() or not (WORKFLOWS_DIR / stale.name).exists():
+            stale.unlink()
+    wf_pairs = [(p, dst_study / "workflows" / p.name) for p in sorted(WORKFLOWS_DIR.glob("*.md"))] if WORKFLOWS_DIR.exists() else []
     pairs = [
         (STUDY_DIR / ".gitignore", dst_study / ".gitignore"),
         (STUDY_MD, dst_study / "SKILL.md"),
+        (STUDY_VERSION, dst_study / "VERSION"),
+        (STUDY_VERSION, dest_repo / "VERSION"),
+        *wf_pairs,
         *[(p, dst_study / "references" / p.name) for p in sorted(REFS_DIR.glob("*.md"))],
         (PLOT_HELPER, dst_study / "scripts" / "plot_helper.py"),
+        (CHECK_UPDATE, dst_study / "scripts" / "check_update.py"),
         (SCRIPTS_DIR / "pyproject.toml", dst_study / "scripts" / "pyproject.toml"),
         (SCRIPTS_DIR / "uv.lock", dst_study / "scripts" / "uv.lock"),
         (FEEDBACK_DIR / ".gitignore", dst_fb / ".gitignore"),
@@ -241,8 +346,11 @@ def sync_public_skills(dest_repo: pathlib.Path) -> None:
 def write_bundle(out_path: pathlib.Path) -> None:
     parts = [
         f"# 受审全套文件\n\n## study/SKILL.md\n\n{STUDY_MD.read_text(encoding='utf-8')}",
-        f"\n---\n## study-feedback/SKILL.md\n\n{FEEDBACK_MD.read_text(encoding='utf-8')}",
     ]
+    if WORKFLOWS_DIR.exists():
+        for wf in sorted(WORKFLOWS_DIR.glob("*.md")):
+            parts.append(f"\n---\n## workflows/{wf.name}\n\n{wf.read_text(encoding='utf-8')}")
+    parts.append(f"\n---\n## study-feedback/SKILL.md\n\n{FEEDBACK_MD.read_text(encoding='utf-8')}")
     for ref in sorted(REFS_DIR.glob("*.md")):
         parts.append(f"\n---\n## references/{ref.name}\n\n{ref.read_text(encoding='utf-8')}")
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -259,7 +367,7 @@ def main() -> None:
         write_bundle(args.bundle)
         print(f"[OK] 已导出合并受审稿: {args.bundle}")
 
-    errors = check_docs_and_assets() + smoke_test_plot()
+    errors = check_docs_and_assets() + smoke_test_plot() + smoke_test_update_checker()
     if args.dist_check:
         errors.extend(check_dist_isolation())
     if errors:
@@ -271,12 +379,15 @@ def main() -> None:
         sync_public_skills(dest)
         print(f"[OK] 已同步纯净双技能至: {dest / 'skills'}")
 
+    wf_cnt = len(list(WORKFLOWS_DIR.glob("*.md"))) if WORKFLOWS_DIR.exists() else 0
+    ver_str = STUDY_VERSION.read_text(encoding="utf-8").strip() if STUDY_VERSION.exists() else "?"
     print(
-        f"[PASS] study={len(STUDY_MD.read_text(encoding='utf-8').splitlines())}行 | "
+        f"[PASS] version=v{ver_str} | study={len(STUDY_MD.read_text(encoding='utf-8').splitlines())}行 | "
+        f"workflows={wf_cnt}份双向对齐 | "
         f"refs={len(list(REFS_DIR.glob('*.md')))}份四槽双向对齐 | "
         f"study-feedback={len(FEEDBACK_MD.read_text(encoding='utf-8').splitlines())}行 | "
         f"plot_helper={len(PLOT_HELPER.read_text(encoding='utf-8').splitlines())}行 | "
-        "文风、纯自包含、跨平台字体、隐私零残留与绘图冒烟全部通过"
+        "文风、纯自包含、跨平台字体、隐私零残留、更新自检与绘图冒烟全部通过"
     )
 
 

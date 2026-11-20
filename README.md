@@ -6,16 +6,22 @@
 
 ```text
 study-skill/
+├── VERSION                     # 单一版本真源（与 skills/study/VERSION 同步）
+├── CHANGELOG.md                # 版本变更记录
 ├── skills/
 │   ├── study/                  # 独立伴学主技能（零外部技能依赖，可单独安装运行）
 │   │   ├── SKILL.md            # 伴学分流、前置摸底、推演语感与笔记沉淀规程
+│   │   ├── VERSION             # 技能版本号
+│   │   ├── workflows/          # 按需加载的长卷伴学总图规程（long-corpus.md）
 │   │   ├── references/         # 10 份正交草稿纸表征抓手（按单卡核心对象动态读取）
-│   │   └── scripts/            # Matplotlib / SciPy 轻量矢量图底座（plot_helper.py）
+│   │   └── scripts/            # 矢量绘图底座（plot_helper.py）与更新检查（check_update.py）
 │   └── study-feedback/         # 伴学失真诊断与防退化复盘技能（可选安装）
 │       ├── SKILL.md            # 现场脱敏诊断出单（模式一）与集中复盘迭代（模式二）
 │       ├── local_config.example.json
 │       └── scripts/lint_study.py
-├── .github/workflows/ci.yml    # 跨三端（Linux / macOS / Windows）静态门禁与绘图冒烟 CI
+├── .github/workflows/
+│   ├── ci.yml                  # 跨三端（Linux / macOS / Windows）静态门禁与绘图冒烟 CI
+│   └── release.yml             # Git Tag 发布门禁与 GitHub Release 自动创建
 └── LICENSE                     # MIT License
 ```
 
@@ -39,9 +45,9 @@ study-skill/
 - **必备**：[uv](https://docs.astral.sh/uv/)（用于按需隔离运行 `study/scripts` 下的 `Python >= 3.10` 与 `NumPy / Matplotlib / SciPy` 矢量绘图环境，首次调用时自动拉取锁定的依赖）。
 - **Linux 无头环境可选**：如在未预装中文字体的极简 Linux 容器中运行绘图，建议安装开源中文字体（如 `sudo apt-get install fonts-noto-cjk`）以消除紧凑边框测算时的字形告警。
 
-## 安装方式
+## 安装与升级方式
 
-### 方式一：通过 `skills` CLI 安装
+### 方式一：通过 `skills` CLI 安装（推荐，原生支持版本检查与升级）
 
 ```bash
 # 同时安装 study 与 study-feedback
@@ -49,15 +55,43 @@ npx skills add crrisugi/study-skill
 
 # 或仅单独安装 study 主技能
 npx skills add crrisugi/study-skill --skill study
+
+# 检查与升级已安装技能
+npx skills check
+npx skills update
 ```
 
-### 方式二：手动复制或软链至宿主技能目录
+### 方式二：Git 克隆 + 软链（第二推荐，一次拉取同步全宿主）
 
-克隆本仓库后，将 `skills/study`（及可选的 `skills/study-feedback`）复制或软链至对应 Agent 宿主的技能目录：
+克隆本仓库后，将 `skills/study`（及可选 `skills/study-feedback`）**软链**至对应 Agent 宿主的技能目录，后续只需在克隆目录执行 `git pull --ff-only` 即可同步全宿主：
 
 - **Claude Code**：`~/.claude/skills/`（或项目级 `.claude/skills/`）
 - **Antigravity / Gemini**：`~/.gemini/config/skills/`（或工作区 `.agents/skills/`）
 - **Codex / 通用工作区**：项目根目录 `.agents/skills/`
+
+若因权限限制改为**手动复制**目录，可运行内置更新工具拉取对应 Release Tag 升级（升级前会展示变更摘要、备份旧目录，并保留 `study-feedback/local_config.json`）：
+
+```bash
+uv run skills/study/scripts/check_update.py --upgrade
+```
+
+## 版本更新感知与隐私退出
+
+- **非阻塞感知**：绘图底座退出时自动在后台刷新本地版本缓存（成功 `72` 小时、失败 `6` 小时负缓存），仅通过 GitHub Releases 重定向头探测最新版本，不消耗 REST API 配额；离线或沙箱网络异常时静默放行，不阻塞伴学流程。
+- **按来源分流**：脚本自动识别 `npx skills`、Git 克隆、宿主插件托管与手动复制目录，绝不越权覆盖托管渠道。
+- **手动检查与退出控制**：
+
+```bash
+# 主动检查最新版本与当前安装来源
+uv run skills/study/scripts/check_update.py --check
+
+# 暂缓提醒 7 天 / 忽略特定版本 / 永久关闭
+uv run skills/study/scripts/check_update.py --snooze 7
+uv run skills/study/scripts/check_update.py --ignore-version 0.2.0
+uv run skills/study/scripts/check_update.py --disable
+```
+
+亦可设置环境变量 `STUDY_NO_UPDATE_CHECK=1` 或 `NO_UPDATE_NOTIFIER=1` 禁用检查（`CI` 环境默认自动禁用）。
 
 ## 使用说明
 
@@ -72,7 +106,7 @@ npx skills add crrisugi/study-skill --skill study
 
 ## 贡献与本地门禁校验
 
-修改任何文档、表征文件或绘图脚本后，请执行内置门禁脚本完成行数预算、双向路由对齐、四槽骨架、文风红线、纯自包含、隐私路径零残留与矢量绘图冒烟自检：
+修改任何文档、表征文件或绘图脚本后，请执行内置门禁脚本完成版本号一致、行数预算、双向路由对齐、四槽骨架、文风红线、纯自包含、隐私路径零残留、更新自检与矢量绘图冒烟自检：
 
 ```bash
 uv run skills/study-feedback/scripts/lint_study.py --dist-check
