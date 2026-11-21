@@ -2,6 +2,20 @@
 
 All notable changes to `study-skill` will be documented in this file.
 
+## [0.2.1] - 2026-11-21
+
+### Added
+- 新增按需下钻绘图细则 `skills/study/workflows/plotting.md`，将两类图分工、曲线顺带打印特征点小表、手写快检与跨宿主内联展示拆离主干并清单化。
+- 新增纯 Python 标准库零依赖脚本 `skills/study/scripts/check_svg.py`，全量检查手写 `<svg>` 的 XML、4 数值 `viewBox`、柔和浅底防暗黑隐身、越界、连线穿字、文字重叠、裸 LaTeX 源码泄露与按色相聚类 `<= 3` 主色系，并支持 `--html` 过检自动补自适应样式打透明底网页壳。
+- 新增纯 Python 标准库零依赖脚本 `skills/study/scripts/check_notes.py`，在带图单卡落盘后与末卡结课前核验 `<agent-embed>` 残留、绝对路径、引用 `assets/*.svg` 实存、正文染色/全角感叹号、孤儿图与蓝图进度。
+- 新增纯 Python 标准库零依赖脚本 `skills/study-feedback/scripts/submit_feedback.py`，封装 `gh` 登录探测、邮箱接口 JSON 校验、GitHub Issue 提交与成功后清理临时文件。
+
+### Changed
+- 升级 `skills/study/scripts/plot_helper.py`：启用 `svg.fonttype="path"` 矢量文字转曲防字体回退错位，强拦截裸 Unicode 上下标、自动去含公式混排粗体，放宽双子图画布并启用 `constrained` 布局，新增自动空角说明框 `note_box`、16 向防压线 `label_point`、可见图例框自动避让与防撞体检、`save_svg(..., html_path=...)` 及纯文字碰撞自检（默认不读图省开销）。
+- 精简 `skills/study/SKILL.md` 并拆短超长单行（零 `>260` 字预警）：新增独立单轮新符号多选快筛、按需引出动机、补钻下位断点硬触发、中后卡断层承接、三类隐形符号兜底与 `k-A/k-B` 边界；主干绘图小节瘦身为硬底线与按需读取 `workflows/plotting.md` 入口。
+- 升级 `skills/study/workflows/long-corpus.md`：补齐长卷单元深浅实核、摸底双向调档、速通章节不免测与长卷速通按节拆存三块短卡。
+- 升级 `skills/study-feedback/SKILL.md` 与 `lint_study.py`：外发流程改调 `submit_feedback.py`；门禁将 `study/SKILL.md` 调整为 `<= 200` 行与 `<= 12,500` 字（单行 `> 260` 字软提醒），并将全部新脚本纳入隐私检查、离线冒烟测试与 `--sync-to` 同步。
+
 ## [0.2.0] - 2026-11-20
 
 ### Added

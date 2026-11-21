@@ -12,13 +12,13 @@ study-skill/
 │   ├── study/                  # 独立伴学主技能（零外部技能依赖，可单独安装运行）
 │   │   ├── SKILL.md            # 伴学分流、前置摸底、推演语感与笔记沉淀规程
 │   │   ├── VERSION             # 技能版本号
-│   │   ├── workflows/          # 按需加载的长卷伴学总图规程（long-corpus.md）
+│   │   ├── workflows/          # 按需加载的长卷总图（long-corpus.md）与绘图施工细则（plotting.md）
 │   │   ├── references/         # 10 份正交草稿纸表征抓手（按单卡核心对象动态读取）
-│   │   └── scripts/            # 矢量绘图底座（plot_helper.py）与更新检查（check_update.py）
+│   │   └── scripts/            # 绘图底座（plot_helper.py）、SVG/笔记快检（check_svg.py / check_notes.py）与更新检查（check_update.py）
 │   └── study-feedback/         # 伴学失真诊断与防退化复盘技能（可选安装）
 │       ├── SKILL.md            # 现场脱敏诊断出单（模式一）与集中复盘迭代（模式二）
 │       ├── local_config.example.json
-│       └── scripts/lint_study.py
+│       └── scripts/            # 门禁与冒烟（lint_study.py）及脱敏反馈外发（submit_feedback.py）
 ├── .github/workflows/
 │   ├── ci.yml                  # 跨三端（Linux / macOS / Windows）静态门禁与绘图冒烟 CI
 │   └── release.yml             # Git Tag 发布门禁与 GitHub Release 自动创建

@@ -11,7 +11,7 @@ description: >-
 
 ## 关联路径与模式分流
 
-- **路径解析**：待维护的 `study` 技能默认位于同级目录 `../study/`，含 `SKILL.md`、`VERSION`、`workflows/*.md`、`references/*.md` 与 `scripts/plot_helper.py`、`scripts/check_update.py`；静态门禁位于本技能 `scripts/lint_study.py`。启动时先检查本技能目录是否存在 `local_config.json`：存在则读取其中的本地账本路径 `ledger_path`、文风卡路径 `style_card_path` 与表征准入基准路径 `golden_cases_path`；不存在则按开源外部环境处理。
+- **路径解析**：待维护的 `study` 技能默认位于同级目录 `../study/`，含 `SKILL.md`、`VERSION`、`workflows/*.md`、`references/*.md` 与 `scripts/plot_helper.py`、`scripts/check_svg.py`、`scripts/check_notes.py`、`scripts/check_update.py`；本技能含静态门禁 `scripts/lint_study.py` 与外发脚本 `scripts/submit_feedback.py`。启动时先检查本技能目录是否存在 `local_config.json`：存在则读取其中的本地账本路径 `ledger_path`、文风卡路径 `style_card_path` 与表征准入基准路径 `golden_cases_path`；不存在则按开源外部环境处理。
 - **版本提示**：若存在 `../study/scripts/check_update.py`，结束前可顺带运行 `uv run ../study/scripts/check_update.py --passive`；有新版则在末尾用一行告知版本号与对应升级命令，绝不自动覆盖本地文件。
 - **模式分流**：
   1. **模式一（现场诊断留痕）**：输入 `/study-feedback` 无附加参数，或仅附针对刚才伴学体验的简短说明时进入。
@@ -39,9 +39,9 @@ description: >-
 
 - **双口输出**：`ledger_path` 存在时，若文件或 `## 待讨论分点`、`## 已吸收与已淘汰归档` 标题尚未创建则先自动初始化，确认不与未决项重复后追加至 `## 待讨论分点` 末尾，用两句话告知已记下并交还伴学主线；`ledger_path` 不存在时按以下四步收口：
   1. **先出单**：将上述诊断块包在 Markdown 代码块内输出，提醒用户核对标题与正文未含涉密代号或未发表专有参数。
-  2. **只读探测**：静默执行 `gh auth status` 检查本机是否已安装并登录 GitHub CLI。
-  3. **用户选路**：推荐将邮箱项放首位，并简要说明点选一下即可自动发送、免登录免配置。`gh` 可用时三选一：① 推送到维护者邮箱（推荐：点选即自动发出）；② 一键提交到 `crrisugi/study-skill` GitHub Issue；③ 仅保留当前代码块。`gh` 不可用时二选一：① 推送到维护者邮箱（推荐：点选即自动发出）；② 仅保留代码块并附 `https://github.com/crrisugi/study-skill/issues/new` 供手动提交。未经用户明确同意不得静默外发。
-  4. **通道执行**：选 GitHub Issue 时将诊断单写入系统临时文件后执行 `gh issue create -R crrisugi/study-skill --title "<一句话问题标题>" --body-file "<临时文件路径>"`（禁拼 `--body` 多行字符串或 `cat << 'EOF'`），成功后删临时文件并返回 Issue 链接；选推送邮箱时通过 `python` 标准库 `urllib.request`、`node` 内置 `fetch` 或 `curl`（用临时文件传 JSON）向 `https://formspree.io/f/xrpqkvwl` 发送 `POST`，带 `Accept: application/json`、`Content-Type: application/json` 与常规 `User-Agent`，体为 `{"_subject": "[study-feedback] <一句话问题标题>", "source": "study-skill", "title": "<一句话问题标题>", "report": "<五要素诊断单正文>"}`，校验 `"ok": true` 后告知结果；任一外发失败时保留代码块兜底。
+  2. **只读探测**：静默运行 `python "<本技能目录>/scripts/submit_feedback.py" --probe` 探测 `gh` 安装与登录状态；无系统 Python 时改用 `python3` 或 `uv run --project "../study/scripts" python ...` 兜底。
+  3. **用户选路**：推荐将邮箱项放首位，并简要说明点选一下即可自动发送、免登录免配置。`gh` 可用且已登录时三选一：① 推送到维护者邮箱（推荐：点选即自动发出）；② 一键提交到 `crrisugi/study-skill` GitHub Issue；③ 仅保留当前代码块。否则二选一：① 推送到维护者邮箱（推荐：点选即自动发出）；② 仅保留代码块并附 `https://github.com/crrisugi/study-skill/issues/new` 供手动提交。未经用户明确同意不得静默外发。
+  4. **通道执行**：经用户同意后，将脱敏诊断单写入系统临时文件，运行 `python "<本技能目录>/scripts/submit_feedback.py" --channel github|email --title "<一句话问题标题>" --body-file "<临时文件路径>" --delete-body-file`；无系统 Python 时改用 `python3` 或 `uv run` 兜底，成功告知结果或链接，环境缺失或外发失败时保留代码块兜底。
 
 ---
 
@@ -57,6 +57,6 @@ description: >-
 ### 2. 原地防退化修订
 - **单处合并**：回到对应步骤或表征小节原地改写合并；不在首尾追加注意事项、防错补丁或独立禁令章节，同类要求全文只写一次。
 - **子文件准入**：子文件只填补主干第三步的最小替身、记号摊平、对口配图与备选极值四个局部工具槽，不写流程命令或学科错题清单。新建或拆分须同时满足 **① 跨表征转换或算账动作异构、② 跨至少两个理工方向可复用、③ 存在主干未覆盖的领域特有迷思或记号盲区**；配置了 `golden_cases_path` 时对照基准先梳理领域迷思并筛除主干已有项，逆向转成四槽草稿纸正向动作，经代表算式试算对比、Python 真值核验与维护者确认后合入；无实质增益直接淘汰或合并，单文件维持 `15~35` 行。
-- **脚本演进**：调默认样式只改 `plot_helper.py` 顶部常量区；新增图元函数须同时满足 **① 原生 `Matplotlib` 手写超 `10` 行且易错、② 跨至少两个课题可复用**，全文维持 $\le 150$ 行、旧签名兼容，同步更新文件前 `15` 行速查注释，不在 `study/SKILL.md` 抄函数签名。
+- **脚本演进**：调默认样式只改 `plot_helper.py` 顶部常量区；新增图元函数须同时满足 **① 原生 `Matplotlib` 手写超 `10` 行且易错、② 跨至少两个课题可复用**，保持旧签名兼容且不限制脚本总行数，同步更新文件顶部速查注释，不在 `study/SKILL.md` 抄函数签名。
 - **文风与门禁**：改完对照 `style_card_path`（若存在），删去空话套话并收短句子，保持单分句简短、粗体标题 `2~6` 字、零超长圆括号补丁、零感叹号与零私人路径；最后执行 `uv run "<本技能目录>/scripts/lint_study.py"`，确认体量、文风、隐私与绘图冒烟全部通过。
 - **归档清零**：有本地反馈池时，将已采纳与已淘汰条目单行摘要剪切移入 `## 已吸收与已淘汰归档`，括注日期、落点文件或淘汰原因。

@@ -15,4 +15,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-only-include = ["plot_helper.py", "check_update.py"]
+only-include = ["plot_helper.py", "check_svg.py", "check_notes.py", "check_update.py"]
