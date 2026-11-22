@@ -12,7 +12,7 @@ study-skill/
 │   ├── study/                  # 独立伴学主技能（零外部技能依赖，可单独安装运行）
 │   │   ├── SKILL.md            # 伴学分流、前置摸底、推演语感与笔记沉淀规程
 │   │   ├── VERSION             # 技能版本号
-│   │   ├── workflows/          # 按需加载的长卷总图（long-corpus.md）与绘图施工细则（plotting.md）
+│   │   ├── workflows/          # 按需加载的长卷总图（long-corpus.md）、绘图细则（plotting.md）与归档模板（archiving.md）
 │   │   ├── references/         # 10 份正交草稿纸表征抓手（按单卡核心对象动态读取）
 │   │   └── scripts/            # 绘图底座（plot_helper.py）、SVG/笔记快检（check_svg.py / check_notes.py）与更新检查（check_update.py）
 │   └── study-feedback/         # 伴学失真诊断与防退化复盘技能（可选安装）

@@ -2,6 +2,16 @@
 
 All notable changes to `study-skill` will be documented in this file.
 
+## [0.2.3] - 2026-11-22
+
+### Added
+- 新增按需加载的归档细则与产出模板 `skills/study/workflows/archiving.md`，将合并慢嚼卡、总卡/短卡形态、相对配图规范、`check_notes.py` 校验命令及蓝图/单卡模板从主干剥离，为 `study/SKILL.md` 释放两千余字上下文空间。
+
+### Changed
+- 升级 `skills/study/workflows/long-corpus.md`：明确失真长卷派并行只读子代理侦察时的交接范围与四项压缩回执契约（章节标题、页数、核心推导/图示位置与跨章前置依赖），禁抄正文、禁越权定档。
+- 升级 `skills/study/workflows/plotting.md`：新增连续失败熔断机制，脚本报错或手写 SVG 体检碰撞连修 2 次仍未过时立即停手，改拆简图、换数表或说明卡点交用户定夺。
+- 升级 `skills/study-feedback/SKILL.md`：模式一零打字回扫遇到多处明显卡顿且归因不唯一时，先一句列出候选现场请用户确认再写池，避免脑补根因。
+
 ## [0.2.2] - 2026-11-22
 
 ### Changed
