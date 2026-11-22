@@ -2,6 +2,13 @@
 
 All notable changes to `study-skill` will be documented in this file.
 
+## [0.2.4] - 2026-11-22
+
+### Changed
+- 升级 `skills/study/SKILL.md`：明确讲解与落盘笔记独立可读定位，原件章节、页码或函数位置只留蓝图和卡头且不记公式号；对话小标题、推演正文、核心结论、配图与笔记正文均不夹带公式号、章节号、附录或引理裸编号及裸行号，整卡不另编公式号；跨卡或隔段引用直接复写对应算式、条件或关键代码，紧邻步骤用“上式”或名字与作用承接（保留公认定理名与真实函数名）；旁支与延后留账只点明内容、不甩空指路，原件附录步骤按主干必走当场算通或支线说清结论分流。
+- 升级 `skills/study/SKILL.md`、`skills/study/workflows/plotting.md` 与 `skills/study/workflows/archiving.md`：原件已有清晰图示不再仅靠文字指认，改为按“现成独立图直接复制 → 整页图干净截取并裁掉旧图注 → 截不出或模糊杂乱照意思 `.svg` 重画”搬进对话内联展示并保留原格式存入 `assets/`；图内文字禁写原件式号、章节号与附录索引；单卡模板标题行收口为 `原位置`，相对配图路径兼容原图后缀。
+- 升级 `skills/study/scripts/check_svg.py`、`skills/study/scripts/check_notes.py` 与 `skills/study-feedback/scripts/lint_study.py`：`check_svg.py` 拦截手写 `<svg>` 夹带原件式号与章节/附录索引；`check_notes.py` 将 `assets/` 孤儿图检查扩展至 `.svg / .png / .jpg / .jpeg / .webp`，并在跳过首行卡头、代码块与蓝图/总图后对正文漏网原件索引输出 `[WARN]` 提醒（不阻断落盘）；`lint_study.py` 补齐正反离线断言。
+
 ## [0.2.3] - 2026-11-22
 
 ### Added

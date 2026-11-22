@@ -381,6 +381,17 @@ def smoke_test_check_svg() -> list[str]:
             r'<text x="40" y="60" font-size="13">路径\n示例 售价$100 变量$HOME</text></svg>'
         )
         assert mod.check_svg_text(safe_text_svg) == []
+        for bad_label in ("按式 3.12 求导", "Eq. (3) 代入", "见 3.2 节", "原书补充推导", "由引理 2.3 得"):
+            ref_svg = (
+                '<svg viewBox="0 0 400 160"><rect x="0" y="0" width="400" height="160" fill="#f4f6f8"/>'
+                f'<text x="40" y="60" font-size="13">{bad_label}</text></svg>'
+            )
+            assert any("原件式号或章节索引" in x for x in mod.check_svg_text(ref_svg)), bad_label
+        safe_ref_svg = (
+            '<svg viewBox="0 0 500 160"><rect x="0" y="0" width="500" height="160" fill="#f4f6f8"/>'
+            '<text x="40" y="60" font-size="13">形式(1) 链式法则 第 1 步 模式 2</text></svg>'
+        )
+        assert mod.check_svg_text(safe_ref_svg) == []
 
         four_colors = (
             '<svg viewBox="0 0 400 160"><rect x="0" y="0" width="400" height="160" fill="#f4f6f8"/>'
@@ -452,20 +463,34 @@ def smoke_test_check_notes() -> list[str]:
             assets.mkdir()
             valid_svg = '<svg viewBox="0 0 100 60"><rect x="0" y="0" width="100" height="60" fill="#f4f6f8"/></svg>'
             (assets / "卡01_示例.svg").write_text(valid_svg, encoding="utf-8")
+            (assets / "卡01_原图.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
             (assets / "孤儿图.svg").write_text(valid_svg, encoding="utf-8")
+            (assets / "孤儿原图.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
             (root / "00_伴学脉络蓝图.md").write_text(
-                "| 顺序 | 主题 | 说明 |\n| :--- | :--- | :--- |\n| 卡 01 | 示例一 | 测 |\n| 卡 02 | 示例二 | 测 |\n",
+                "| 顺序 | 主题 | 说明 |\n| :--- | :--- | :--- |\n| 卡 01 | 示例一（第 3.2 节） | 测 |\n| 卡 02 | 示例二 | 测 |\n",
                 encoding="utf-8",
             )
             good_card = root / "卡01_示例.md"
             good_card.write_text(
-                "# 卡 01｜示例\n\n算例阶乘 `5!` 与推导 $n! = n(n-1)!$。\n\n"
-                "![图注](assets/卡01_示例.svg)\n\n"
+                "# 卡 01｜示例（原位置：第 3.2 节）\n\n算例阶乘 `5!` 与推导 $n! = n(n-1)!$，按形式(1)和链式法则在 `forward()` 运行 5 sec（App 1）。\n\n"
+                "![图注](assets/卡01_示例.svg)\n![原图](assets/卡01_原图.png)\n\n"
                 "```html\n<agent-embed src=\"demo.html\"></agent-embed>\n```\n",
                 encoding="utf-8",
             )
             errs_good, refs_good = mod.check_note_file(good_card)
-            assert errs_good == [] and len(refs_good) == 1, errs_good
+            assert errs_good == [] and len(refs_good) == 2, errs_good
+            assert mod.check_note_warnings(good_card) == []
+            assert mod.check_note_warnings(root / "00_伴学脉络蓝图.md") == []
+
+            warn_card = root / "卡02_含索引.md"
+            warn_card.write_text(
+                "# 卡 02｜含索引（原位置：第 3.3 节）\n\n由式 3.12 与 Eq. (3) 可得，详见 3.2 节与原书补充推导，代码见第 142 行，由引理 2.3 得。\n",
+                encoding="utf-8",
+            )
+            w_errs, _ = mod.check_note_file(warn_card)
+            w_warns = mod.check_note_warnings(warn_card)
+            assert w_errs == [] and len(w_warns) == 1 and "式 3.12" in w_warns[0], (w_errs, w_warns)
+            warn_card.unlink()
 
             bad_card = root / "卡99_脏稿.md"
             bad_card.write_text(
@@ -481,7 +506,8 @@ def smoke_test_check_notes() -> list[str]:
 
             d_errs, d_warns, d_sum = mod.check_notes_dir(root)
             assert d_errs == [] and d_sum["card_count"] == 1
-            assert any("孤儿图" in w for w in d_warns)
+            assert any("孤儿图.svg" in w for w in d_warns)
+            assert any("孤儿原图.png" in w for w in d_warns)
             assert any("卡 02" in w for w in d_warns)
 
             (root / "01_全篇脉络总卡.md").write_text("# 总卡\n", encoding="utf-8")

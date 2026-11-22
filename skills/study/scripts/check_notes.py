@@ -30,6 +30,19 @@ _PREREQ_NEW_RE = re.compile(r"^(\d+)(?:\.([1-9]\d*))?_0\.([1-9]\d*)$")
 _PREREQ_OLD_UNDER_RE = re.compile(r"^(\d+)(?:\.([1-9]\d*))?_0$")
 _PREREQ_OLD_DOT_RE = re.compile(r"^(\d+)\.0(?:([A-Za-z])|\.(\d+))?$")
 _MAIN_CARD_RE = re.compile(r"^(\d+)(?:\.([1-9]\d*))?$")
+_IMAGE_EXTS = {".svg", ".png", ".jpg", ".jpeg", ".webp"}
+_FIRST_H1_RE = re.compile(r"^\s*#\s+[^\n]*\n?")
+_SOURCE_REF_RE = re.compile(
+    r"(?:"
+    r"(?<![形模方通算列简格款])式\s*(?:[(（]\s*\d+(?:[.\-]\d+)*\s*[)）]|\d+(?:[.\-]\d+)+)"
+    r"|(?<![A-Za-z0-9_])(?:Eqs?\.?)\s*(?:[(（]\s*\d+(?:[.\-]\d+)*\s*[)）]|\d+(?:[.\-]\d+)*)(?![A-Za-z0-9_])"
+    r"|(?:详见|参见|见|参考|参照)\s*(?:原书|原文|原件|教材|上文|前文|后文)?\s*(?:第\s*\d+(?:\.\d+)*\s*[章节页行]|\d+(?:\.\d+)+\s*[章节]|附录|补充推导)"
+    r"|(?:原书|原文|原件)\s*(?:第\s*\d+(?:\.\d+)*\s*[章节页]|\d+(?:\.\d+)+\s*[章节]|附录|补充推导)"
+    r"|(?<![A-Za-z0-9_])(?:Section|Sec\.|Appendix|App\.)\s*(?:\d+(?:\.\d+)*|[A-Z](?:\.\d+)?)(?![A-Za-z0-9_])"
+    r"|(?:由|据|按|根据|见)\s*(?:原书|原文|原件)?\s*(?:引理|定理|推论|命题)\s*\d+(?:[.\-]\d+)*"
+    r")",
+    re.I,
+)
 
 
 def _strip_code(text: str) -> str:
@@ -167,6 +180,28 @@ def check_note_file(md_path: pathlib.Path) -> tuple[list[str], set[pathlib.Path]
     return errors, referenced
 
 
+def _is_index_doc(md_path: pathlib.Path) -> bool:
+    stem = md_path.stem
+    return stem.startswith("00_") and ("蓝图" in stem or "总图" in stem)
+
+
+def check_note_warnings(md_path: pathlib.Path) -> list[str]:
+    if _is_index_doc(md_path):
+        return []
+    try:
+        raw = md_path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    body = _FIRST_H1_RE.sub("", raw, count=1)
+    prose = _strip_code(body)
+    hits = list(dict.fromkeys(m.group(0).strip() for m in _SOURCE_REF_RE.finditer(prose)))
+    if not hits:
+        return []
+    sample = "、".join(hits[:3])
+    more = f" 等 {len(hits)} 处" if len(hits) > 3 else ""
+    return [f"{md_path.name} 正文疑似夹带原件式号或章节索引 ({sample}{more})，建议改为直接写出算式或内容说明"]
+
+
 def _parse_blueprint_cards(blueprint_path: pathlib.Path) -> list[str]:
     planned: list[str] = []
     try:
@@ -195,6 +230,7 @@ def check_notes_dir(dir_path: pathlib.Path) -> tuple[list[str], list[str], dict]
         f_errs, f_refs = check_note_file(md)
         errors.extend(f_errs)
         all_refs.update(f_refs)
+        warnings.extend(check_note_warnings(md))
         if cm := _CARD_FILE_RE.match(md.stem):
             cid, _, is_legacy, suggested = _parse_card_id(cm.group(1))
             if is_legacy and suggested:
@@ -207,10 +243,10 @@ def check_notes_dir(dir_path: pathlib.Path) -> tuple[list[str], list[str], dict]
     assets_dir = dir_path / "assets"
     orphans: list[pathlib.Path] = []
     if assets_dir.is_dir():
-        for svg in sorted(assets_dir.glob("*.svg")):
-            if svg.is_file() and svg.resolve() not in all_refs:
-                orphans.append(svg)
-                warnings.append(f"assets/{svg.name} 未被任何笔记 .md 引用（疑似孤儿图）")
+        for img in sorted(assets_dir.iterdir()):
+            if img.is_file() and img.suffix.lower() in _IMAGE_EXTS and img.resolve() not in all_refs:
+                orphans.append(img)
+                warnings.append(f"assets/{img.name} 未被任何笔记 .md 引用（疑似孤儿图）")
 
     blueprint = dir_path / "00_伴学脉络蓝图.md"
     summary_card = dir_path / "01_全篇脉络总卡.md"
@@ -267,6 +303,8 @@ def main(argv: list[str] | None = None) -> int:
             cid, _, is_legacy, suggested = _parse_card_id(cm.group(1))
             if is_legacy and suggested:
                 print(f"[WARN] 检测到旧版先修编号 卡 {cid}，建议改用 卡 {suggested}")
+        for w in check_note_warnings(target):
+            print(f"[WARN] {w}")
         print(f"[PASS] 单卡体检通过: {target.name}（引用配图 {len(refs)} 张）")
         return 0
 
