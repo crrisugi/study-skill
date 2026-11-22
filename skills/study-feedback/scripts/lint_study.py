@@ -487,6 +487,73 @@ def smoke_test_check_notes() -> list[str]:
             (root / "01_全篇脉络总卡.md").write_text("# 总卡\n", encoding="utf-8")
             _, d_warns_sum, _ = mod.check_notes_dir(root)
             assert not any("卡 02" in w for w in d_warns_sum)
+
+            std_dir = pathlib.Path(tmp) / "std_prereq"
+            std_dir.mkdir()
+            (std_dir / "00_伴学脉络蓝图.md").write_text(
+                "| 顺序 | 主题 | 说明 |\n| :--- | :--- | :--- |\n"
+                "| 卡 01_0.1 | 先修零 | 测 |\n"
+                "| 卡 01 | 首卡 | 测 |\n"
+                "| 卡 02_0.1 | 先修一 | 测 |\n"
+                "| 卡 02_0.2 | 先修二 | 测 |\n"
+                "| 卡 02（核心） | 目标卡 | 测 |\n"
+                "| 卡 03.1_0.1 | 子卡先修 | 测 |\n"
+                "| 卡 03.1 | 子卡一 | 测 |\n"
+                "| 卡 10 | 十号卡 | 测 |\n"
+                "| 卡 02.0xyz | 非法格式 | 测 |\n",
+                encoding="utf-8",
+            )
+            planned_std = mod._parse_blueprint_cards(std_dir / "00_伴学脉络蓝图.md")
+            assert planned_std == ["01_0.1", "01", "02_0.1", "02_0.2", "02", "03.1_0.1", "03.1", "10"], planned_std
+            assert "02.0" not in planned_std
+
+            for fname in (
+                "卡01_0.1_先修零.md",
+                "卡01_首卡.md",
+                "卡02_0.1_先修一.md",
+                "卡02_0.5倍频采样.md",
+                "卡03.1_0.1_子卡先修.md",
+                "卡03.1_子卡一.md",
+                "卡10_十号卡.md",
+            ):
+                (std_dir / fname).write_text("# 标题\n", encoding="utf-8")
+            m_half = mod._CARD_FILE_RE.match("卡02_0.5倍频采样")
+            m_zero = mod._CARD_FILE_RE.match("卡02_0阶近似")
+            assert m_half and mod._normalize_card_id(m_half.group(1)) == "02"
+            assert m_zero and mod._normalize_card_id(m_zero.group(1)) == "02"
+
+            order_ids = ["02_0.1", "02_0.2", "02", "03.1_0.1", "03.1", "10"]
+            assert sorted(order_ids, key=mod._card_sort_key) == order_ids
+
+            s_errs, s_warns, s_sum = mod.check_notes_dir(std_dir)
+            assert s_errs == [] and s_sum["card_count"] == 7, (s_errs, s_sum)
+            assert s_sum["missing_cards"] == ["02_0.2"], s_sum["missing_cards"]
+            assert any("卡 02_0.2" in w for w in s_warns), s_warns
+            assert not any("旧版先修编号" in w for w in s_warns), s_warns
+            assert s_sum["latest_card"] == "卡10_十号卡.md", s_sum["latest_card"]
+
+            (std_dir / "卡02_0.2_先修二.md").write_text("# 先修二\n", encoding="utf-8")
+            (std_dir / "卡02_0阶近似.md").write_text("# 重号\n", encoding="utf-8")
+            (std_dir / "卡2_重复.md").write_text("# 重号\n", encoding="utf-8")
+            _, dup_warns, dup_sum = mod.check_notes_dir(std_dir)
+            assert dup_sum["missing_cards"] == [], dup_sum["missing_cards"]
+            assert any("重号卡片 卡 02" in w for w in dup_warns), dup_warns
+
+            legacy_dir = pathlib.Path(tmp) / "legacy_prereq"
+            legacy_dir.mkdir()
+            (legacy_dir / "00_伴学脉络蓝图.md").write_text(
+                "| 顺序 | 主题 | 说明 |\n| :--- | :--- | :--- |\n"
+                "| 卡 02.0a | 旧字母 | 测 |\n"
+                "| 卡 02.0.1 | 旧三级 | 测 |\n"
+                "| 卡 03.0 | 旧单卡 | 测 |\n",
+                encoding="utf-8",
+            )
+            for fname in ("卡02.0a_旧字母.md", "卡02.0.1_旧三级.md", "卡03.0_旧单卡.md"):
+                (legacy_dir / fname).write_text("# 旧版\n", encoding="utf-8")
+            l_errs, l_warns, l_sum = mod.check_notes_dir(legacy_dir)
+            assert l_errs == [] and l_sum["missing_cards"] == [], (l_errs, l_sum)
+            assert sum(1 for w in l_warns if "旧版先修编号" in w) == 3, l_warns
+            assert l_sum["latest_card"] == "卡03.0_旧单卡.md", l_sum["latest_card"]
     except AssertionError as err:
         return [f"check_notes 离线断言失败: {err}"]
     except Exception as err:

@@ -2,6 +2,13 @@
 
 All notable changes to `study-skill` will be documented in this file.
 
+## [0.2.2] - 2026-11-22
+
+### Changed
+- 统一 `skills/study/SKILL.md` 先修铺垫卡编号规范：开局先修、大断层分流切片及中后卡/子卡前插先修统一编为 `目标卡号_0.1 / _0.2`（如 `卡 01_0.1`、`卡 02_0.1 / 02_0.2`、`卡 03.1_0.1`），实现 Windows / macOS / VS Code / Obsidian 跨平台排序一致，并明确与同卡多机制拆分 `k.1 / k.2` 彻底隔离。
+- 升级 `skills/study/scripts/check_notes.py`：支持 `目标卡号_0.1 / _0.2` 与子卡前先修，修复蓝图正则对带后缀卡号的静默截断漏洞并防正卡 `0.x` 标题误判；改按真实学习顺序计算 `latest_card`；新增同目录重号卡 `[WARN]` 提醒，并兼容旧版 `03.0 / 02.0a / 02.0.1` 写法（放行且打印温和迁移提醒）。
+- 升级 `skills/study-feedback/scripts/lint_study.py`：补齐 `check_notes.py` 新旧先修编号、防误判、语义排序与重号提醒离线断言。
+
 ## [0.2.1] - 2026-11-21
 
 ### Added

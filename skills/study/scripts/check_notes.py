@@ -23,8 +23,13 @@ _EMBED_TAG_RE = re.compile(r"<agent-embed\b", re.I)
 _MD_IMAGE_RE = re.compile(r"!\[[^\]]*\]\(([^)\n]+)\)")
 _COLOR_CODE_RE = re.compile(r"(?:\\textcolor\b|\\color\s*\{|<span\b[^>]*\bcolor\s*:)", re.I)
 _ABS_TARGET_RE = re.compile(r"^(?:file:|https?://|[A-Za-z]:[/\\]|/|\\\\)", re.I)
-_PLAN_ROW_RE = re.compile(r"^\|\s*卡\s*([0-9]+(?:\.[0-9]+)?)(?![\d.])")
-_CARD_FILE_RE = re.compile(r"^卡\s*([0-9]+(?:\.[0-9]+)?)(?:[_\-\s]|$)")
+_CARD_ID_BODY = r"[0-9]+(?:\.[1-9][0-9]*)?_0(?:\.[1-9][0-9]*)?|[0-9]+(?:\.0(?:[A-Za-z]|\.[0-9]+)?|\.[1-9][0-9]*)?"
+_PLAN_ROW_RE = re.compile(rf"^\|\s*卡\s*({_CARD_ID_BODY})(?![\d.A-Za-z_])")
+_CARD_FILE_RE = re.compile(rf"^卡\s*({_CARD_ID_BODY})(?:[_\-\s]|$)")
+_PREREQ_NEW_RE = re.compile(r"^(\d+)(?:\.([1-9]\d*))?_0\.([1-9]\d*)$")
+_PREREQ_OLD_UNDER_RE = re.compile(r"^(\d+)(?:\.([1-9]\d*))?_0$")
+_PREREQ_OLD_DOT_RE = re.compile(r"^(\d+)\.0(?:([A-Za-z])|\.(\d+))?$")
+_MAIN_CARD_RE = re.compile(r"^(\d+)(?:\.([1-9]\d*))?$")
 
 
 def _strip_code(text: str) -> str:
@@ -32,11 +37,75 @@ def _strip_code(text: str) -> str:
     return _INLINE_CODE_RE.sub("", no_fence)
 
 
+def _parse_card_id(
+    raw_id: str,
+) -> tuple[str, tuple[int, int, int, tuple[int, str]], bool, str | None]:
+    if m := _PREREQ_NEW_RE.match(raw_id):
+        main_num = int(m.group(1))
+        sub_num = int(m.group(2)) if m.group(2) else 0
+        prereq_num = int(m.group(3))
+        base = f"{m.group(1).zfill(2)}.{sub_num}" if m.group(2) else m.group(1).zfill(2)
+        return (
+            f"{base}_0.{prereq_num}",
+            (main_num, sub_num, 0, (prereq_num, "")),
+            False,
+            None,
+        )
+    if m := _PREREQ_OLD_UNDER_RE.match(raw_id):
+        main_num = int(m.group(1))
+        sub_num = int(m.group(2)) if m.group(2) else 0
+        base = f"{m.group(1).zfill(2)}.{sub_num}" if m.group(2) else m.group(1).zfill(2)
+        return (
+            f"{base}_0",
+            (main_num, sub_num, 0, (0, "")),
+            True,
+            f"{base}_0.1",
+        )
+    if m := _PREREQ_OLD_DOT_RE.match(raw_id):
+        main_num = int(m.group(1))
+        base = m.group(1).zfill(2)
+        if m.group(2):
+            ch = m.group(2).lower()
+            idx = ord(ch) - ord("a") + 1
+            return (
+                f"{base}.0{ch}",
+                (main_num, 0, 0, (idx, ch)),
+                True,
+                f"{base}_0.{idx}",
+            )
+        if m.group(3) is not None:
+            p = int(m.group(3))
+            return (
+                f"{base}.0.{p}",
+                (main_num, 0, 0, (p, "")),
+                True,
+                f"{base}_0.{max(p, 1)}",
+            )
+        return (
+            f"{base}.0",
+            (main_num, 0, 0, (0, "")),
+            True,
+            f"{base}_0.1",
+        )
+    if m := _MAIN_CARD_RE.match(raw_id):
+        main_num = int(m.group(1))
+        sub_num = int(m.group(2)) if m.group(2) else 0
+        norm = f"{m.group(1).zfill(2)}.{sub_num}" if m.group(2) else m.group(1).zfill(2)
+        return (
+            norm,
+            (main_num, sub_num, 1, (0, "")),
+            False,
+            None,
+        )
+    return raw_id, (0, 0, 1, (0, raw_id)), False, None
+
+
 def _normalize_card_id(raw_id: str) -> str:
-    if "." in raw_id:
-        main_part, sub_part = raw_id.split(".", 1)
-        return f"{main_part.zfill(2)}.{sub_part}"
-    return raw_id.zfill(2)
+    return _parse_card_id(raw_id)[0]
+
+
+def _card_sort_key(raw_id: str) -> tuple[int, int, int, tuple[int, str]]:
+    return _parse_card_id(raw_id)[1]
 
 
 def _extract_image_target(raw_inside: str) -> str:
@@ -121,12 +190,19 @@ def check_notes_dir(dir_path: pathlib.Path) -> tuple[list[str], list[str], dict]
 
     all_refs: set[pathlib.Path] = set()
     disk_cards: dict[str, pathlib.Path] = {}
+    legacy_suggestions: dict[str, str] = {}
     for md in md_files:
         f_errs, f_refs = check_note_file(md)
         errors.extend(f_errs)
         all_refs.update(f_refs)
         if cm := _CARD_FILE_RE.match(md.stem):
-            disk_cards[_normalize_card_id(cm.group(1))] = md
+            cid, _, is_legacy, suggested = _parse_card_id(cm.group(1))
+            if is_legacy and suggested:
+                legacy_suggestions.setdefault(cid, suggested)
+            if cid in disk_cards:
+                warnings.append(f"存在重号卡片 卡 {cid}: {disk_cards[cid].name} 与 {md.name}")
+            else:
+                disk_cards[cid] = md
 
     assets_dir = dir_path / "assets"
     orphans: list[pathlib.Path] = []
@@ -140,6 +216,13 @@ def check_notes_dir(dir_path: pathlib.Path) -> tuple[list[str], list[str], dict]
     summary_card = dir_path / "01_全篇脉络总卡.md"
     has_summary_card = summary_card.is_file()
     planned_ids = _parse_blueprint_cards(blueprint) if blueprint.is_file() else []
+    for cid in planned_ids:
+        norm_cid, _, is_legacy, suggested = _parse_card_id(cid)
+        if is_legacy and suggested:
+            legacy_suggestions.setdefault(norm_cid, suggested)
+    for cid, suggested in sorted(legacy_suggestions.items(), key=lambda kv: _card_sort_key(kv[0])):
+        warnings.append(f"检测到旧版先修编号 卡 {cid}，建议改用 卡 {suggested}")
+
     missing_cards: list[str] = []
     if planned_ids and not has_summary_card:
         for cid in planned_ids:
@@ -147,7 +230,11 @@ def check_notes_dir(dir_path: pathlib.Path) -> tuple[list[str], list[str], dict]
                 missing_cards.append(cid)
                 warnings.append(f"蓝图计划卡 卡 {cid} 尚未落盘")
 
-    latest_card = sorted(disk_cards.values(), key=lambda p: p.name)[-1].name if disk_cards else (summary_card.name if has_summary_card else "")
+    latest_card = (
+        sorted(disk_cards.items(), key=lambda kv: (_card_sort_key(kv[0]), kv[1].name))[-1][1].name
+        if disk_cards
+        else (summary_card.name if has_summary_card else "")
+    )
     summary = {
         "md_count": len(md_files),
         "card_count": len(disk_cards),
@@ -176,6 +263,10 @@ def main(argv: list[str] | None = None) -> int:
         if errors:
             print("[FAIL] 笔记单卡体检未通过:\n- " + "\n- ".join(errors), file=sys.stderr)
             return 1
+        if cm := _CARD_FILE_RE.match(target.stem):
+            cid, _, is_legacy, suggested = _parse_card_id(cm.group(1))
+            if is_legacy and suggested:
+                print(f"[WARN] 检测到旧版先修编号 卡 {cid}，建议改用 卡 {suggested}")
         print(f"[PASS] 单卡体检通过: {target.name}（引用配图 {len(refs)} 张）")
         return 0
 
