@@ -31,7 +31,7 @@ jobs:
           fi
 
       - name: Run lint_study.py --dist-check
-        run: uv run skills/study-feedback/scripts/lint_study.py --dist-check
+        run: uv run scripts/lint_study.py --dist-check
 
       - name: Extract changelog notes
         env:

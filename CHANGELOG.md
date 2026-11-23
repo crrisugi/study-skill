@@ -10,6 +10,7 @@ All notable changes to `study-skill` will be documented in this file.
 - 明确交互提问工具触发边界与静谧收尾：仅在开讲前选档、筛符号、摸底、分流、调档与总图确认等短提示发选择题时调用交互提问工具；长讲义与半步停顿末尾一律禁调弹窗控件，同时取消 `k-A` 半步预测与整卡末尾轻自核单选，改以一句平实短话收尾确认。
 - 全套说明文档去重瘦身：清理 `skills/study/SKILL.md`（精简至 `129` 行 / `10,753` 字，零 `>260` 字长行）、`workflows/archiving.md`、`workflows/plotting.md`、`workflows/long-corpus.md`、`scripts/plot_helper.py` 顶部注释及 `6` 份 `references/*.md` 共 `11` 处跨文件复读、长清单、脚本已检重复提醒与配图底色口径微差。
 - 优化讲义排版防断渲染与落盘防呆：`skills/study/workflows/teaching-style.md` 将多步拆块升级为按体量分层（轻量单层编号、重载改用 `###` 三级小标题，禁止嵌套子列表夹写 `$$` 或 4 空格缩进续行）；`skills/study/scripts/check_notes.py` 新增 CommonMark 状态机扫描，硬拦截会被误判为缩进代码块的含公式缩进行，并在 `lint_study.py` 补齐正反离线断言。
+- 剥离维护者私有工具与公开分发边界：将仓库级静态门禁移至 `scripts/lint_study.py`（移除 `--bundle`、`--sync-to` 等本地维护参数，更新 `.github/workflows/{ci,release}.yml`）；移除 `skills/study-feedback/local_config.example.json`、`skills/study-feedback/SKILL.md` 中的模式二复盘维护分支及 `.gitignore` 私有规则，使公开版 `study-feedback` 专注于现场脱敏诊断与邮件 / GitHub Issue 提报。
 
 ## [0.2.6] - 2026-11-23
 

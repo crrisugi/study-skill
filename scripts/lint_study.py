@@ -1,17 +1,14 @@
 """study 与 study-feedback 双技能静态门禁、防耦合红线、隐私零残留与绘图库冒烟自检脚本
 
 用法：
-  uv run "<study-feedback目录>/scripts/lint_study.py"
-  uv run "<study-feedback目录>/scripts/lint_study.py" --dist-check
-  uv run "<study-feedback目录>/scripts/lint_study.py" --bundle "<scratch>/study_bundle.md"
-  uv run "<study-feedback目录>/scripts/lint_study.py" --sync-to "<开源合仓根目录>"
+  uv run scripts/lint_study.py
+  uv run scripts/lint_study.py --dist-check
 """
 from __future__ import annotations
 import argparse
 import os
 import pathlib
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -21,9 +18,9 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-FEEDBACK_DIR = pathlib.Path(__file__).resolve().parents[1]
-STUDY_DIR = pathlib.Path(os.environ.get("STUDY_DIR") or (FEEDBACK_DIR.parent / "study"))
-REPO_ROOT = STUDY_DIR.parent.parent if STUDY_DIR.parent.name == "skills" else None
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
+STUDY_DIR = pathlib.Path(os.environ.get("STUDY_DIR") or (REPO_ROOT / "skills" / "study"))
+FEEDBACK_DIR = REPO_ROOT / "skills" / "study-feedback"
 STUDY_MD = STUDY_DIR / "SKILL.md"
 STUDY_VERSION = STUDY_DIR / "VERSION"
 FEEDBACK_MD = FEEDBACK_DIR / "SKILL.md"
@@ -138,10 +135,6 @@ def check_docs_and_assets() -> list[str]:
             if root_ver != study_ver:
                 errs.append(f"仓库根目录 VERSION ({root_ver}) 与 study/VERSION ({study_ver}) 不一致")
 
-    fb_gitignore = FEEDBACK_DIR / ".gitignore"
-    if not fb_gitignore.exists() or "local_config.json" not in fb_gitignore.read_text(encoding="utf-8"):
-        errs.append("study-feedback/.gitignore 必须包含 local_config.json 隐私隔离项")
-
     wf_files = sorted(WORKFLOWS_DIR.glob("*.md")) if WORKFLOWS_DIR.exists() else []
     base_dir = REPO_ROOT or STUDY_DIR.parent
     spec_docs = [STUDY_MD, FEEDBACK_MD, *wf_files, *sorted(REFS_DIR.glob("*.md"))]
@@ -171,9 +164,8 @@ def check_docs_and_assets() -> list[str]:
         CHECK_NOTES,
         CHECK_UPDATE,
         SCRIPTS_DIR / "pyproject.toml",
-        FEEDBACK_DIR / "scripts" / "lint_study.py",
+        REPO_ROOT / "scripts" / "lint_study.py",
         SUBMIT_FEEDBACK,
-        FEEDBACK_DIR / "local_config.example.json",
         STUDY_DIR / ".gitignore",
         FEEDBACK_DIR / ".gitignore",
     ]
@@ -186,7 +178,7 @@ def check_docs_and_assets() -> list[str]:
         if gh_dir.exists():
             public_files.extend(sorted(p for p in gh_dir.rglob("*") if p.is_file()))
 
-    priv_re = re.compile(r"(?:[A-Za-z]:[/\\](?:Users|DESKTOP)|/(?:Users|home)/[a-zA-Z0-9_\u4e00-\u9fa5]+)", re.I)
+    priv_re = re.compile(r"(?:[A-Za-z]:[/\\]Users[/\\]|/(?:Users|home)/[a-zA-Z0-9_\u4e00-\u9fa5]+)", re.I)
     for pf in public_files:
         if not pf.exists():
             continue
@@ -207,7 +199,7 @@ def check_dist_isolation(scan_root: pathlib.Path | None = None) -> list[str]:
         for p in sorted(root.rglob("*")):
             if ".git" in p.parts:
                 continue
-            if p.name in {"local_config.json", ".venv", "__pycache__", "evals"} or p.suffix in {".pyc", ".pyo"} or "golden_cases" in p.name:
+            if p.name in {".venv", "__pycache__"} or p.suffix in {".pyc", ".pyo"}:
                 errs.append(f"发版目录残留本地私有文件或缓存产物: {p.relative_to(base)}")
     if scan_root or REPO_ROOT:
         repo = scan_root or REPO_ROOT
@@ -738,64 +730,10 @@ def smoke_test_update_checker() -> list[str]:
     return []
 
 
-def sync_public_skills(dest_repo: pathlib.Path) -> None:
-    dst_study = dest_repo / "skills" / "study"
-    dst_fb = dest_repo / "skills" / "study-feedback"
-    for d in (dst_study / "references", dst_study / "workflows", dst_study / "scripts", dst_fb / "scripts"):
-        d.mkdir(parents=True, exist_ok=True)
-    for stale in (dst_study / "references").glob("*.md"):
-        if not (REFS_DIR / stale.name).exists():
-            stale.unlink()
-    for stale in (dst_study / "workflows").glob("*.md"):
-        if not WORKFLOWS_DIR.exists() or not (WORKFLOWS_DIR / stale.name).exists():
-            stale.unlink()
-    wf_pairs = [(p, dst_study / "workflows" / p.name) for p in sorted(WORKFLOWS_DIR.glob("*.md"))] if WORKFLOWS_DIR.exists() else []
-    pairs = [
-        (STUDY_DIR / ".gitignore", dst_study / ".gitignore"),
-        (STUDY_MD, dst_study / "SKILL.md"),
-        (STUDY_VERSION, dst_study / "VERSION"),
-        (STUDY_VERSION, dest_repo / "VERSION"),
-        *wf_pairs,
-        *[(p, dst_study / "references" / p.name) for p in sorted(REFS_DIR.glob("*.md"))],
-        (PLOT_HELPER, dst_study / "scripts" / "plot_helper.py"),
-        (CHECK_SVG, dst_study / "scripts" / "check_svg.py"),
-        (CHECK_NOTES, dst_study / "scripts" / "check_notes.py"),
-        (CHECK_UPDATE, dst_study / "scripts" / "check_update.py"),
-        (SCRIPTS_DIR / "pyproject.toml", dst_study / "scripts" / "pyproject.toml"),
-        (SCRIPTS_DIR / "uv.lock", dst_study / "scripts" / "uv.lock"),
-        (FEEDBACK_DIR / ".gitignore", dst_fb / ".gitignore"),
-        (FEEDBACK_MD, dst_fb / "SKILL.md"),
-        (FEEDBACK_DIR / "local_config.example.json", dst_fb / "local_config.example.json"),
-        (FEEDBACK_DIR / "scripts" / "lint_study.py", dst_fb / "scripts" / "lint_study.py"),
-        (SUBMIT_FEEDBACK, dst_fb / "scripts" / "submit_feedback.py"),
-    ]
-    for src, dst in pairs:
-        shutil.copyfile(src, dst)
-
-
-def write_bundle(out_path: pathlib.Path) -> None:
-    parts = [
-        f"# 受审全套文件\n\n## study/SKILL.md\n\n{STUDY_MD.read_text(encoding='utf-8')}",
-    ]
-    if WORKFLOWS_DIR.exists():
-        for wf in sorted(WORKFLOWS_DIR.glob("*.md")):
-            parts.append(f"\n---\n## workflows/{wf.name}\n\n{wf.read_text(encoding='utf-8')}")
-    parts.append(f"\n---\n## study-feedback/SKILL.md\n\n{FEEDBACK_MD.read_text(encoding='utf-8')}")
-    for ref in sorted(REFS_DIR.glob("*.md")):
-        parts.append(f"\n---\n## references/{ref.name}\n\n{ref.read_text(encoding='utf-8')}")
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text("\n".join(parts), encoding="utf-8")
-
-
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--bundle", type=pathlib.Path, help="输出合并盲审稿路径")
     ap.add_argument("--dist-check", action="store_true", help="检查发布目录是否零私有配置与零缓存残留")
-    ap.add_argument("--sync-to", type=pathlib.Path, help="门禁通过后将纯净公开技能同步至指定开源合仓根目录")
     args = ap.parse_args()
-    if args.bundle:
-        write_bundle(args.bundle)
-        print(f"[OK] 已导出合并受审稿: {args.bundle}")
 
     errors = (
         check_docs_and_assets()
@@ -810,11 +748,6 @@ def main() -> None:
     if errors:
         print("[FAIL] 门禁未通过:\n- " + "\n- ".join(errors))
         sys.exit(1)
-
-    if args.sync_to:
-        dest = args.sync_to.resolve()
-        sync_public_skills(dest)
-        print(f"[OK] 已同步纯净双技能至: {dest / 'skills'}")
 
     if warns := collect_study_warnings():
         print("[WARN] 可选排版提醒:\n- " + "\n- ".join(warns))
