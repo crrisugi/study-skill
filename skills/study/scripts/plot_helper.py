@@ -12,7 +12,7 @@
 - note_box(ax, text, loc="auto", color="#334155"): 自动避开曲线的最空角落浅底说明框
 - label_point(ax, xy, text, offset=None, color=COLORS['blue'], dot=True): 16向防压线白底点位标注
 - save_svg(fig, svg_path=None, html_path=None, preview_png=None) -> str: 矢量文字转曲导出瘦身SVG
-提示：图内上下标一律用 $...$（勿直接敲裸上下标如 N₂ 或 10⁻⁸），含公式文字无需加粗。
+提示：图内上下标一律用 $...$（勿直接敲裸上下标如 N₂ 或 10⁻⁸），不用 \mathcal，含公式文字无需加粗。
 """
 from __future__ import annotations
 import atexit, io, pathlib, re, sys
