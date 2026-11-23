@@ -3,6 +3,7 @@
 用法：
   python check_notes.py "<单张笔记.md路径>"
   python check_notes.py "<笔记目录路径>"
+  python check_notes.py --recap "<笔记目录路径>"
 """
 from __future__ import annotations
 
@@ -32,6 +33,9 @@ _PREREQ_OLD_DOT_RE = re.compile(r"^(\d+)\.0(?:([A-Za-z])|\.(\d+))?$")
 _MAIN_CARD_RE = re.compile(r"^(\d+)(?:\.([1-9]\d*))?$")
 _IMAGE_EXTS = {".svg", ".png", ".jpg", ".jpeg", ".webp"}
 _FIRST_H1_RE = re.compile(r"^\s*#\s+[^\n]*\n?")
+_RECAP_HEADING_RE = re.compile(r"^##\s+.*已学主线")
+_CORE_CONCLUSION_RE = re.compile(r"\*\*核心结论\s*[：:]\s*(.+?)\*\*", re.S)
+_CORE_CONCLUSION_ALT_RE = re.compile(r"\*\*核心结论\*\*\s*[：:]\s*([^\n]+)")
 _SOURCE_REF_RE = re.compile(
     r"(?:"
     r"(?<![形模方通算列简格款])式\s*(?:[(（]\s*\d+(?:[.\-]\d+)*\s*[)）]|\d+(?:[.\-]\d+)+)"
@@ -284,15 +288,138 @@ def check_notes_dir(dir_path: pathlib.Path) -> tuple[list[str], list[str], dict]
     return errors, warnings, summary
 
 
+def _extract_card_label_and_conclusion(md_path: pathlib.Path) -> tuple[str, str]:
+    try:
+        raw = md_path.read_text(encoding="utf-8")
+    except OSError:
+        return md_path.stem, "（无法读取文件）"
+
+    lines = raw.splitlines()
+    label = md_path.stem
+    for line in lines:
+        s = line.strip()
+        if s.startswith("# "):
+            cleaned = re.sub(r"\s*[（(][^）)]*[）)]\s*$", "", s[2:].strip()).strip()
+            if cleaned:
+                label = cleaned
+            break
+
+    conclusion = ""
+    if m := _CORE_CONCLUSION_RE.search(raw):
+        conclusion = re.sub(r"\s+", " ", m.group(1)).strip(" ：:*")
+    elif m := _CORE_CONCLUSION_ALT_RE.search(raw):
+        conclusion = re.sub(r"\s+", " ", m.group(1)).strip(" ：:*")
+
+    if not conclusion:
+        body = _strip_code(_FIRST_H1_RE.sub("", raw, count=1))
+        in_math = False
+        for line in body.splitlines():
+            s = line.strip()
+            if s.startswith("$$"):
+                if s.count("$$") == 1:
+                    in_math = not in_math
+                continue
+            if in_math or not s or s.startswith(("#", "![", ">", "---", "|", "- **")):
+                continue
+            s = re.sub(r"\s+", " ", s)
+            conclusion = s[:77] + "..." if len(s) > 80 else s
+            break
+
+    return label, conclusion or "未提取到核心结论"
+
+
+def recap_notes_dir(dir_path: pathlib.Path) -> tuple[str, list[str]]:
+    blueprint = dir_path / "00_伴学脉络蓝图.md"
+    if blueprint.is_file():
+        try:
+            bp_lines = blueprint.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            bp_lines = []
+        in_recap = False
+        collected: list[str] = []
+        for line in bp_lines:
+            s = line.rstrip()
+            stripped = s.strip()
+            if not in_recap:
+                if _RECAP_HEADING_RE.match(stripped):
+                    in_recap = True
+                continue
+            if re.match(r"^##\s+\S", stripped):
+                break
+            if not stripped or stripped == "---" or stripped.startswith("<!--"):
+                continue
+            if (stripped.startswith("（") and stripped.endswith("）")) or (stripped.startswith("(") and stripped.endswith(")")):
+                continue
+            collected.append(s)
+        if collected:
+            return "blueprint", collected
+
+    card_items: list[tuple[tuple[int, int, int, tuple[int, str]], str, bool, pathlib.Path]] = []
+    for md in sorted(p for p in dir_path.glob("*.md") if p.is_file()):
+        if cm := _CARD_FILE_RE.match(md.stem):
+            cid, sort_key, _, _ = _parse_card_id(cm.group(1))
+            is_prereq = bool(
+                _PREREQ_NEW_RE.match(cid)
+                or _PREREQ_OLD_UNDER_RE.match(cid)
+                or _PREREQ_OLD_DOT_RE.match(cid)
+            )
+            card_items.append((sort_key, md.name, is_prereq, md))
+
+    if card_items:
+        card_items.sort(key=lambda item: (item[0], item[1]))
+        out: list[str] = []
+        for _, _, is_prereq, md in card_items:
+            label, conclusion = _extract_card_label_and_conclusion(md)
+            prefix = "  - " if is_prereq else "- "
+            out.append(f"{prefix}**{label}**：{conclusion}")
+        return "cards", out
+
+    summary_card = dir_path / "01_全篇脉络总卡.md"
+    if summary_card.is_file():
+        try:
+            raw_sum = summary_card.read_text(encoding="utf-8")
+        except OSError:
+            raw_sum = ""
+        matches = sorted(
+            [*_CORE_CONCLUSION_RE.finditer(raw_sum), *_CORE_CONCLUSION_ALT_RE.finditer(raw_sum)],
+            key=lambda m: m.start(),
+        )
+        hits = [re.sub(r"\s+", " ", m.group(1)).strip(" ：:*") for m in matches]
+        if hits:
+            return "summary_card", [f"- {h}" for h in hits]
+        headings = [line.strip()[3:].strip() for line in raw_sum.splitlines() if line.strip().startswith("## ")]
+        if headings:
+            return "summary_card", [f"- {h}" for h in headings]
+
+    return "empty", []
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="伴学落盘笔记与配图完整度体检工具")
     ap.add_argument("target", type=pathlib.Path, help="待检查的单张笔记 .md 文件或笔记目录路径")
+    ap.add_argument("--recap", action="store_true", help="打印蓝图已学主线账本，缺节时兜底抓取已归档卡片核心结论")
     args = ap.parse_args(argv)
     target = args.target
 
     if not target.exists():
         print(f"[FAIL] 目标不存在: {target}", file=sys.stderr)
         return 1
+
+    if args.recap:
+        recap_dir = target.parent if target.is_file() else target
+        source, lines = recap_notes_dir(recap_dir)
+        if source == "blueprint":
+            print(f"[RECAP] 来源: 蓝图主线账本 (共 {len(lines)} 条)")
+        elif source == "cards":
+            print(f"[RECAP] 来源: 已归档卡片核心结论兜底 (共 {len(lines)} 张)")
+        elif source == "summary_card":
+            print(f"[RECAP] 来源: 全篇脉络总卡 (共 {len(lines)} 条)")
+        else:
+            print("[RECAP] 暂无已归档卡片或主线记录")
+            return 0
+        for line in lines:
+            print(line)
+        return 0
 
     if target.is_file():
         errors, refs = check_note_file(target)

@@ -580,6 +580,52 @@ def smoke_test_check_notes() -> list[str]:
             assert l_errs == [] and l_sum["missing_cards"] == [], (l_errs, l_sum)
             assert sum(1 for w in l_warns if "旧版先修编号" in w) == 3, l_warns
             assert l_sum["latest_card"] == "卡03.0_旧单卡.md", l_sum["latest_card"]
+
+            bp_recap_dir = pathlib.Path(tmp) / "bp_recap"
+            bp_recap_dir.mkdir()
+            (bp_recap_dir / "00_伴学脉络蓝图.md").write_text(
+                "# 00｜学习脉络：回看测试\n\n"
+                "## 三、已学主线与阶段收获\n"
+                "（开局暂留空；模板提示应跳过。）\n"
+                "- **卡 01**：立清初始缺口，引入补充假设。\n"
+                "- **卡 02**：推通变换表达式并核对边界。\n\n"
+                "## 四、跨文档符号对照表\n"
+                "- 应被截断。\n",
+                encoding="utf-8",
+            )
+            r_src1, r_lines1 = mod.recap_notes_dir(bp_recap_dir)
+            assert r_src1 == "blueprint" and len(r_lines1) == 2, (r_src1, r_lines1)
+            assert "卡 01" in r_lines1[0] and "卡 02" in r_lines1[1], r_lines1
+
+            cards_recap_dir = pathlib.Path(tmp) / "cards_recap"
+            cards_recap_dir.mkdir()
+            (cards_recap_dir / "00_伴学脉络蓝图.md").write_text("# 00｜旧版无主线蓝图\n", encoding="utf-8")
+            (cards_recap_dir / "卡02_0.1_先修.md").write_text("# 卡 02_0.1｜先修（先修铺垫）\n\n**核心结论：先修结论。**\n", encoding="utf-8")
+            (cards_recap_dir / "卡02_正卡.md").write_text("# 卡 02｜正卡（原位置：1.2）\n\n**核心结论：正卡结论。**\n", encoding="utf-8")
+            (cards_recap_dir / "卡10_末卡.md").write_text("# 卡 10｜末卡（原位置：1.9）\n\n**核心结论：末卡结论。**\n", encoding="utf-8")
+            r_src2, r_lines2 = mod.recap_notes_dir(cards_recap_dir)
+            assert r_src2 == "cards" and len(r_lines2) == 3, (r_src2, r_lines2)
+            assert r_lines2[0].startswith("  - **卡 02_0.1｜先修**：先修结论。"), r_lines2
+            assert r_lines2[1].startswith("- **卡 02｜正卡**：正卡结论。"), r_lines2
+            assert r_lines2[2].startswith("- **卡 10｜末卡**：末卡结论。"), r_lines2
+
+            quote_recap_dir = pathlib.Path(tmp) / "quote_recap"
+            quote_recap_dir.mkdir()
+            (quote_recap_dir / "卡01_引用框.md").write_text(
+                "# 卡 01｜引用框（原位置：1.1）\n\n---\n\n> **核心结论**：引用框核心结论。\n>\n> **成立前提**：参数非零。\n",
+                encoding="utf-8",
+            )
+            q_src, q_lines = mod.recap_notes_dir(quote_recap_dir)
+            assert q_src == "cards" and q_lines == ["- **卡 01｜引用框**：引用框核心结论。"], (q_src, q_lines)
+
+            sum_recap_dir = pathlib.Path(tmp) / "sum_recap"
+            sum_recap_dir.mkdir()
+            (sum_recap_dir / "01_全篇脉络总卡.md").write_text(
+                "# 全篇总卡\n\n> **核心结论**：总卡引用框结论。\n",
+                encoding="utf-8",
+            )
+            s_src, s_lines = mod.recap_notes_dir(sum_recap_dir)
+            assert s_src == "summary_card" and s_lines == ["- 总卡引用框结论。"], (s_src, s_lines)
     except AssertionError as err:
         return [f"check_notes 离线断言失败: {err}"]
     except Exception as err:

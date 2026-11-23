@@ -12,7 +12,7 @@ study-skill/
 │   ├── study/                  # 独立伴学主技能（零外部技能依赖，可单独安装运行）
 │   │   ├── SKILL.md            # 伴学分流、前置摸底、推演语感与笔记沉淀规程
 │   │   ├── VERSION             # 技能版本号
-│   │   ├── workflows/          # 按需加载的长卷总图（long-corpus.md）、绘图细则（plotting.md）与归档模板（archiving.md）
+│   │   ├── workflows/          # 按需加载的长卷总图（long-corpus.md）、绘图细则（plotting.md）、归档模板（archiving.md）与语言风格卡（teaching-style.md）
 │   │   ├── references/         # 10 份正交草稿纸表征抓手（按单卡核心对象动态读取）
 │   │   └── scripts/            # 绘图底座（plot_helper.py）、SVG/笔记快检（check_svg.py / check_notes.py）与更新检查（check_update.py）
 │   └── study-feedback/         # 伴学失真诊断与防退化复盘技能（可选安装）
@@ -99,7 +99,7 @@ uv run skills/study/scripts/check_update.py --disable
 
 1. **启动伴学（`/study`）**：
    - 输入 `/study` 并附上问题、公式截图、论文段落或源码路径；
-   - 单点概念或单步推导自动走**靶向直答**（一屏最小算例答清）；整节论文、多步推导或源码模块自动走**分卡伴学**（首轮选定深度档位 $\rightarrow$ 按需摸底与先修分流 $\rightarrow$ 排定蓝图与统一小算例 $\rightarrow$ 草稿纸推演与 `.svg` 矢量配图 $\rightarrow$ 确认后落盘笔记）。
+   - 单点概念或单步推导自动走**靶向直答**（一屏答清）；整节论文、多步推导或源码模块自动走**分卡伴学**（首轮选定深度档位 $\rightarrow$ 按需摸底与先修分流 $\rightarrow$ 排定蓝图 $\rightarrow$ 草稿纸推演、按需小例与 `.svg` 矢量配图 $\rightarrow$ 确认后落盘笔记）。
 2. **记录伴学失真反馈（`/study-feedback`）**：
    - 伴学过程中若遇到分卡失当、跳步或摸底跑偏，直接输入 `/study-feedback`；
    - 默认开源模式下生成脱敏的五要素 Markdown 代码块并探测本机 `gh` 登录状态，可按用户选择通过 `gh` 一键提交至本仓库 GitHub Issues、直接匿名推送反馈给维护者，或保留代码块手动提交；维护者亦可在 `skills/study-feedback/` 下复制 `local_config.example.json` 为 `local_config.json`（已被 `.gitignore` 忽略），将反馈沉淀至本地私有账本并通过 `/study-feedback 复盘` 原地迭代。
