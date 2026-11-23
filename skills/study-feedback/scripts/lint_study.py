@@ -504,6 +504,28 @@ def smoke_test_check_notes() -> list[str]:
             assert len(errs_bad) >= 5, errs_bad
             bad_card.unlink()
 
+            indent_bad = root / "卡98_缩进公式.md"
+            indent_bad.write_text(
+                "1. **步骤**：\n   - 子项：\n\n$$\na = b\n$$\n\n     这里有公式 $x$。\n",
+                encoding="utf-8",
+            )
+            errs_indent, _ = mod.check_note_file(indent_bad)
+            assert any("缩进代码块" in e for e in errs_indent), errs_indent
+            assert mod._find_indented_math_lines("$$\na = b\n$$\n     续行 $x$\n") == [(4, 5)]
+            assert mod._find_indented_math_lines("正常段落。\n\n    $$\n    a = b\n    $$\n") == [(3, 4), (5, 4)]
+            indent_bad.unlink()
+
+            indent_ok = root / "卡97_合法公式.md"
+            indent_ok.write_text(
+                "$$\n    \\begin{aligned}\n    a &= b + $c$\n    \\end{aligned}\n$$\n\n"
+                "```markdown\n    code $x$\n```\n\n"
+                "1. a\n   - b\n\n     c $x$\n",
+                encoding="utf-8",
+            )
+            errs_indent_ok, _ = mod.check_note_file(indent_ok)
+            assert errs_indent_ok == [], errs_indent_ok
+            indent_ok.unlink()
+
             d_errs, d_warns, d_sum = mod.check_notes_dir(root)
             assert d_errs == [] and d_sum["card_count"] == 1
             assert any("孤儿图.svg" in w for w in d_warns)

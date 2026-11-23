@@ -19,6 +19,9 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 _FENCED_CODE_RE = re.compile(r"(?:```.*?```|~~~.*?~~~)", re.S)
+_FENCE_OPEN_RE = re.compile(r"^[ ]{0,3}(`{3,}|~{3,})")
+_LIST_MARKER_RE = re.compile(r"^([ ]*)((?:[-*+]|\d{1,9}[.)])[ ]+)")
+_INLINE_OR_DISPLAY_MATH_RE = re.compile(r"(?<!\\)\$\$|(?<!\\)\$[^$\n]+(?<!\\)\$")
 _INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
 _EMBED_TAG_RE = re.compile(r"<agent-embed\b", re.I)
 _MD_IMAGE_RE = re.compile(r"!\[[^\]]*\]\(([^)\n]+)\)")
@@ -135,6 +138,89 @@ def _extract_image_target(raw_inside: str) -> str:
     return target.split("#", 1)[0].split("?", 1)[0].strip()
 
 
+def _find_indented_math_lines(raw: str) -> list[tuple[int, int]]:
+    """Scan Markdown lines for math expressions placed in 4+ space indented code blocks."""
+    hits: list[tuple[int, int]] = []
+    fence_char: str | None = None
+    fence_len = 0
+    fence_container = 0
+    in_math = False
+    list_indents: list[int] = []
+    can_start_indented_code = True
+
+    for lineno, line in enumerate(raw.splitlines(), start=1):
+        expanded = line.expandtabs(4)
+        stripped = expanded.strip()
+        indent = len(expanded) - len(expanded.lstrip(" "))
+
+        if fence_char is not None:
+            if (
+                indent <= fence_container + 3
+                and len(stripped) >= fence_len
+                and set(stripped) == {fence_char}
+            ):
+                fence_char = None
+                fence_len = 0
+                fence_container = 0
+                can_start_indented_code = True
+            continue
+
+        if in_math:
+            if re.search(r"(?<!\\)\$\$", stripped):
+                in_math = False
+                can_start_indented_code = True
+            continue
+
+        if not stripped:
+            can_start_indented_code = True
+            continue
+
+        while list_indents and indent < list_indents[-1]:
+            list_indents.pop()
+        active_indent = list_indents[-1] if list_indents else 0
+
+        if can_start_indented_code and indent >= active_indent + 4:
+            if _INLINE_OR_DISPLAY_MATH_RE.search(stripped):
+                hits.append((lineno, indent))
+            can_start_indented_code = True
+            continue
+
+        rel = expanded[active_indent:]
+        if m_fence := _FENCE_OPEN_RE.match(rel):
+            marker = m_fence.group(1)
+            rest_fence = rel[m_fence.end() :]
+            if marker[0] == "~" or "`" not in rest_fence:
+                fence_char = marker[0]
+                fence_len = len(marker)
+                fence_container = active_indent
+                continue
+
+        if stripped.startswith("$$"):
+            rest_math = stripped[2:]
+            if re.search(r"(?<!\\)\$\$", rest_math):
+                in_math = False
+                can_start_indented_code = True
+            else:
+                in_math = True
+            continue
+
+        if m_list := _LIST_MARKER_RE.match(expanded):
+            marker_end = len(m_list.group(1)) + len(m_list.group(2))
+            if not list_indents or marker_end > list_indents[-1]:
+                list_indents.append(marker_end)
+            else:
+                list_indents[-1] = marker_end
+            can_start_indented_code = False
+            continue
+
+        if stripped == ">" or stripped.startswith(("#", "---", "***", "___", "|")):
+            can_start_indented_code = True
+        else:
+            can_start_indented_code = False
+
+    return hits
+
+
 def check_note_file(md_path: pathlib.Path) -> tuple[list[str], set[pathlib.Path]]:
     errors: list[str] = []
     referenced: set[pathlib.Path] = set()
@@ -180,6 +266,14 @@ def check_note_file(md_path: pathlib.Path) -> tuple[list[str], set[pathlib.Path]
 
     if "！" in prose:
         errors.append(f"{name} 正文含禁用全角感叹号 '！'")
+
+    indented_math = _find_indented_math_lines(raw)
+    if indented_math:
+        sample = "、".join(f"第 {ln} 行({ind} 空格)" for ln, ind in indented_math[:3])
+        more = f" 等 {len(indented_math)} 处" if len(indented_math) > 3 else ""
+        errors.append(
+            f"{name} 存在会被 Markdown 误判为缩进代码块的含公式缩进行 ({sample}{more})，请将重载步骤改用 ### 三级小标题并令公式及说明段顶格"
+        )
 
     return errors, referenced
 
