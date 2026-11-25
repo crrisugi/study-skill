@@ -640,6 +640,30 @@ def smoke_test_check_notes() -> list[str]:
             )
             s_src, s_lines = mod.recap_notes_dir(sum_recap_dir)
             assert s_src == "summary_card" and s_lines == ["- 总卡引用框结论。"], (s_src, s_lines)
+
+            skipped_dir = pathlib.Path(tmp) / "skipped_cards"
+            skipped_dir.mkdir()
+            (skipped_dir / "00_伴学脉络蓝图.md").write_text(
+                "# 00｜学习脉络：跳过存盘测试\n\n"
+                "| 顺序 | 主题 | 说明 |\n| :--- | :--- | :--- |\n"
+                "| 卡 01_0.1 | 先修 | 测 |\n"
+                "| 卡 01（核心） | 首卡 | 测 |\n"
+                "| 卡 02 | 二卡 | 测 |\n\n"
+                "## 三、已学主线与阶段收获\n"
+                "  - **卡 01_0.1（先修）**：补通基础工具。（未落盘）\n"
+                "1. **卡 01（核心）**：为卡 02 铺垫。（未落盘）\n",
+                encoding="utf-8",
+            )
+            sk_errs1, sk_warns1, sk_sum1 = mod.check_notes_dir(skipped_dir)
+            assert sk_errs1 == [] and sk_sum1["missing_cards"] == ["02"], (sk_errs1, sk_sum1)
+            assert sk_sum1["skipped_count"] == 2, sk_sum1
+            assert len(sk_warns1) == 1 and "卡 02" in sk_warns1[0], sk_warns1
+
+            with (skipped_dir / "00_伴学脉络蓝图.md").open("a", encoding="utf-8") as f:
+                f.write("2. **卡 02**：完成收束。（未落盘）\n")
+            sk_errs2, sk_warns2, sk_sum2 = mod.check_notes_dir(skipped_dir)
+            assert sk_errs2 == [] and sk_warns2 == [] and sk_sum2["missing_cards"] == [], (sk_errs2, sk_warns2, sk_sum2)
+            assert sk_sum2["skipped_count"] == 3, sk_sum2
     except AssertionError as err:
         return [f"check_notes 离线断言失败: {err}"]
     except Exception as err:

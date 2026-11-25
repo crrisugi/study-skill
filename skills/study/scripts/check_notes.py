@@ -37,6 +37,7 @@ _MAIN_CARD_RE = re.compile(r"^(\d+)(?:\.([1-9]\d*))?$")
 _IMAGE_EXTS = {".svg", ".png", ".jpg", ".jpeg", ".webp"}
 _FIRST_H1_RE = re.compile(r"^\s*#\s+[^\n]*\n?")
 _RECAP_HEADING_RE = re.compile(r"^##\s+.*已学主线")
+_RECAP_ENTRY_CARD_RE = re.compile(rf"^\s*(?:[-*+]|\d+[.)])\s*\**卡\s*({_CARD_ID_BODY})(?![\d.A-Za-z_])")
 _CORE_CONCLUSION_RE = re.compile(r"\*\*核心结论\s*[：:]\s*(.+?)\*\*", re.S)
 _CORE_CONCLUSION_ALT_RE = re.compile(r"\*\*核心结论\*\*\s*[：:]\s*([^\n]+)")
 _SOURCE_REF_RE = re.compile(
@@ -314,6 +315,28 @@ def _parse_blueprint_cards(blueprint_path: pathlib.Path) -> list[str]:
     return planned
 
 
+def _parse_skipped_cards(blueprint_path: pathlib.Path) -> set[str]:
+    skipped: set[str] = set()
+    try:
+        lines = blueprint_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return skipped
+    in_recap = False
+    for line in lines:
+        stripped = line.strip()
+        if not in_recap:
+            if _RECAP_HEADING_RE.match(stripped):
+                in_recap = True
+            continue
+        if re.match(r"^##\s+\S", stripped):
+            break
+        if "未落盘" not in stripped:
+            continue
+        if m := _RECAP_ENTRY_CARD_RE.match(line):
+            skipped.add(_normalize_card_id(m.group(1)))
+    return skipped
+
+
 def check_notes_dir(dir_path: pathlib.Path) -> tuple[list[str], list[str], dict]:
     errors: list[str] = []
     warnings: list[str] = []
@@ -350,6 +373,7 @@ def check_notes_dir(dir_path: pathlib.Path) -> tuple[list[str], list[str], dict]
     summary_card = dir_path / "01_全篇脉络总卡.md"
     has_summary_card = summary_card.is_file()
     planned_ids = _parse_blueprint_cards(blueprint) if blueprint.is_file() else []
+    skipped_ids = _parse_skipped_cards(blueprint) if blueprint.is_file() else set()
     for cid in planned_ids:
         norm_cid, _, is_legacy, suggested = _parse_card_id(cid)
         if is_legacy and suggested:
@@ -360,7 +384,7 @@ def check_notes_dir(dir_path: pathlib.Path) -> tuple[list[str], list[str], dict]
     missing_cards: list[str] = []
     if planned_ids and not has_summary_card:
         for cid in planned_ids:
-            if cid not in disk_cards:
+            if cid not in disk_cards and cid not in skipped_ids:
                 missing_cards.append(cid)
                 warnings.append(f"蓝图计划卡 卡 {cid} 尚未落盘")
 
@@ -369,9 +393,11 @@ def check_notes_dir(dir_path: pathlib.Path) -> tuple[list[str], list[str], dict]
         if disk_cards
         else (summary_card.name if has_summary_card else "")
     )
+    skipped_count = len((skipped_ids & set(planned_ids)) - set(disk_cards)) if planned_ids else len(skipped_ids - set(disk_cards))
     summary = {
         "md_count": len(md_files),
         "card_count": len(disk_cards),
+        "skipped_count": skipped_count,
         "has_summary_card": has_summary_card,
         "latest_card": latest_card,
         "planned_count": len(planned_ids),
@@ -537,7 +563,12 @@ def main(argv: list[str] | None = None) -> int:
             print("[FAIL] 笔记目录体检未通过:\n- " + "\n- ".join(errors), file=sys.stderr)
             return 1
         latest = summary.get("latest_card") or "无"
-        mode_note = "含全篇脉络总卡" if summary.get("has_summary_card") else f"已存卡片 {summary.get('card_count', 0)}/{summary.get('planned_count', 0) or summary.get('card_count', 0)} 张"
+        skipped_note = f"（未落盘 {summary['skipped_count']} 张）" if summary.get("skipped_count") else ""
+        mode_note = (
+            "含全篇脉络总卡"
+            if summary.get("has_summary_card")
+            else f"已存卡片 {summary.get('card_count', 0)}/{summary.get('planned_count', 0) or summary.get('card_count', 0)} 张{skipped_note}"
+        )
         print(
             f"[PASS] 笔记目录体检通过: {target.name} | 共 {summary.get('md_count', 0)} 份文档 | "
             f"{mode_note} | 最新: {latest} | 引用配图 {summary.get('referenced_asset_count', 0)} 张"

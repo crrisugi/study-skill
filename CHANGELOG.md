@@ -2,6 +2,14 @@
 
 All notable changes to `study-skill` will be documented in this file.
 
+## [0.2.8] - 2026-11-25
+
+### Changed
+- 优化 `skills/study/SKILL.md` 开局蓝图可见时机：第二轮发首卡摸底题前，先在正文开头亮出初拟分卡路线并注明摸底后定稿，避免“蒙眼答题”；收齐摸底后再按真实底座定稿写入 `00_伴学脉络蓝图.md` 并同轮开讲 `卡 01`。
+- 废止单篇合存 `01_全篇脉络总卡.md` 并清理 `skills/study/workflows/long-corpus.md` 重复条目：单篇与长卷全面统一为逐卡落盘（`直觉速通` 存轻量短卡、`标准推演 / 深度精读` 存完整讲义卡），解决单篇速通与中间核心卡临时升档之间的编号割裂问题。
+- 统一各档整卡末尾落盘选择权与配图延迟入库：写目录模式下非末卡提供“落盘 / 落盘并继续 / 继续（跳过本卡存盘）”、末卡提供“落盘 / 继续（跳过存盘结课）”；`skills/study/workflows/plotting.md` 与 `archiving.md` 明确讲卡阶段配图先存系统临时目录，确认落盘该卡后再写入工作区 `assets/`。
+- 蓝图未落盘留痕与校验升级：跳过存盘的卡片照常在蓝图 `## 三、已学主线与阶段收获` 补写收获并括注 `（未落盘）`；升级 `skills/study/scripts/check_notes.py` 解析该标记以放行未落盘计划卡并统计跳过张数，同步在 `scripts/lint_study.py` 补全离线断言。
+
 ## [0.2.7] - 2026-11-23
 
 ### Changed
