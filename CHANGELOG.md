@@ -2,6 +2,16 @@
 
 All notable changes to `study-skill` will be documented in this file.
 
+## [0.2.10] - 2026-11-27
+
+### Added
+- `skills/study/scripts/plot_helper.py` 新增公式框图三原语：`new_diagram`（无坐标轴浅底画布）、`draw_box`（自适应贴合公式大小或固定格子尺寸的圆角公式框）与 `flow_arrow`（连接坐标或 `draw_box` 对象自动接边并带白底短标）。
+
+### Changed
+- 细化绘图分工并防臃肿：`skills/study/workflows/plotting.md` 按内容公式复杂度划界，曲线/谱图/热力图/几何矢量与含分式、导数、积分、求和、矩阵元、转置或多重上下标的结构流向框图走 Python `plot_helper.py`（优先横排并保持简标签），纯文字/代码短词与简单符号流程状态图继续手写 `<svg>` + `check_svg.py`，二三节标题同步改为按工具命名；清理 `tensor-array.md`、`conservation-network.md`、`probability-stochastic.md`、`proof-logic.md`、`discrete-state.md` 第 3 节框图描述中的“手写 `<svg>`”限定（只保留画圆角框图/切面）。
+- 升级 `plot_helper.py` 防呆与体检：出图前硬拦截 `$...$` 内 `\begin{...}` 与中文及原件式号/章节索引；将矩形框（`ax.patches` 与文字 `bbox`）纳入 `<= 3` 种主色聚类统计，并新增固定尺寸框文字撑破体检。
+- 升级 `scripts/lint_study.py`：新增 `plot_helper.py` 顶部速查注释超 `25` 行软预警，并补全公式框图、3 项拦截、4 主色与固定框撑破离线冒烟断言。
+
 ## [0.2.9] - 2026-11-25
 
 ### Changed

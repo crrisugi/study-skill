@@ -274,7 +274,37 @@ def smoke_test_plot() -> list[str]:
             "lbbuf = io.StringIO()\n"
             "with contextlib.redirect_stderr(lbbuf):\n"
             "    ph.save_svg(fig_lb)\n"
-            "assert '图例框' in lbbuf.getvalue(), lbbuf.getvalue()\n",
+            "assert '图例框' in lbbuf.getvalue(), lbbuf.getvalue()\n"
+            "fig_dg, ax_dg = ph.new_diagram()\n"
+            "b1 = ph.draw_box(ax_dg, (2.5, 2.4), '纵向消元\\n' + r'$\\frac{\\partial E_x}{\\partial z}$')\n"
+            "b2 = ph.draw_box(ax_dg, (7.5, 2.4), r'块矩阵 $\\mathbf{A}^\\top$', size=(2.6, 1.1), color=ph.COLORS['green'])\n"
+            "ph.flow_arrow(ax_dg, b1, b2, label=r'消去 $E_z$')\n"
+            "dg_buf = io.StringIO()\n"
+            "with contextlib.redirect_stderr(dg_buf):\n"
+            "    s_dg = ph.save_svg(fig_dg)\n"
+            "assert '[plot_helper 自检提示]' not in dg_buf.getvalue(), dg_buf.getvalue()\n"
+            "assert '<svg' in s_dg and '#f8fafc' in s_dg.lower()\n"
+            "for bad_txt in (r'$\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}$', r'$\\text{中文}$', '按式 3.12 消元'):\n"
+            "    try:\n"
+            "        fig_bad, ax_bad = ph.new_diagram()\n"
+            "        ph.draw_box(ax_bad, (5.0, 2.4), bad_txt)\n"
+            "        ph.save_svg(fig_bad)\n"
+            "        raise AssertionError(f'未拦截非法图内文本: {bad_txt}')\n"
+            "    except ValueError:\n"
+            "        pass\n"
+            "fig_mc, ax_mc = ph.new_diagram()\n"
+            "for idx, col in enumerate((ph.COLORS['blue'], ph.COLORS['red'], ph.COLORS['green'], ph.COLORS['orange'])):\n"
+            "    ph.draw_box(ax_mc, (1.5 + idx * 2.2, 2.4), f'块 {idx}', color=col)\n"
+            "mc_buf = io.StringIO()\n"
+            "with contextlib.redirect_stderr(mc_buf):\n"
+            "    ph.save_svg(fig_mc)\n"
+            "assert '主色' in mc_buf.getvalue(), mc_buf.getvalue()\n"
+            "fig_ov, ax_ov = ph.new_diagram()\n"
+            "ph.draw_box(ax_ov, (5.0, 2.4), r'过长公式 $\\frac{\\partial E_x}{\\partial z} + \\frac{\\partial H_y}{\\partial x}$', size=(0.6, 0.3))\n"
+            "ov_buf = io.StringIO()\n"
+            "with contextlib.redirect_stderr(ov_buf):\n"
+            "    ph.save_svg(fig_ov)\n"
+            "assert '撑出固定框体' in ov_buf.getvalue(), ov_buf.getvalue()\n",
             encoding="utf-8",
         )
         env = os.environ.copy()
@@ -315,14 +345,21 @@ def _load_module(mod_name: str, file_path: pathlib.Path):
 
 
 def collect_study_warnings() -> list[str]:
-    if not STUDY_MD.exists():
-        return []
-    head_lines = STUDY_MD.read_text(encoding="utf-8").split("## 产出文档模板")[0].splitlines()
-    return [
-        f"study/SKILL.md 第 {idx} 行偏长 ({len(line)} 字 > {STUDY_WARN_LINE_CHARS})"
-        for idx, line in enumerate(head_lines, start=1)
-        if len(line) > STUDY_WARN_LINE_CHARS
-    ]
+    warns: list[str] = []
+    if STUDY_MD.exists():
+        head_lines = STUDY_MD.read_text(encoding="utf-8").split("## 产出文档模板")[0].splitlines()
+        warns.extend(
+            f"study/SKILL.md 第 {idx} 行偏长 ({len(line)} 字 > {STUDY_WARN_LINE_CHARS})"
+            for idx, line in enumerate(head_lines, start=1)
+            if len(line) > STUDY_WARN_LINE_CHARS
+        )
+    if PLOT_HELPER.exists():
+        ph_raw = PLOT_HELPER.read_text(encoding="utf-8")
+        if m_doc := re.match(r'\s*r?"""(.*?)"""', ph_raw, flags=re.S):
+            doc_lines = len(m_doc.group(1).splitlines())
+            if doc_lines > 25:
+                warns.append(f"plot_helper.py 顶部速查注释偏长 ({doc_lines} 行 > 25)")
+    return warns
 
 
 def smoke_test_check_svg() -> list[str]:

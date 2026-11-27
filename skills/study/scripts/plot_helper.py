@@ -1,4 +1,4 @@
-"""study 伴学绘图底座与高频图元库（通过 uv run --project 调用；日常伴学期间只读不改）
+r"""study 伴学绘图底座与高频图元库（通过 uv run --project 调用；日常伴学期间只读不改）
 
 速查接口（未覆盖的新图型，直接用返回的原生 fig, ax 配合 Matplotlib / SciPy 自由绘制）：
 - COLORS: dict -> 语义高对比色盘 {'blue', 'green', 'orange', 'red', 'gray'}（单图主色 <= 3 种）
@@ -6,16 +6,19 @@
 - new_fig(figsize=(6.8, 3.2), **subplot_kw) -> (fig, ax): 自适应排版白底网格画布
 - new_subplots(nrows=1, ncols=2, figsize=None, **kwargs) -> (fig, axes): 自动宽幅对照画布
 - new_3d_fig(figsize=(6.6, 3.3), elev=28, azim=38) -> (fig, ax): 偏开坐标轴的三维画布
+- new_diagram(figsize=(7.8, 3.6), xlim=(0, 10), ylim=(0, 4.8)) -> (fig, ax): 无坐标轴浅底公式框图画布
 - vec2d(ax, vec, label="", color=COLORS['blue'], origin=(0,0)): 二维箭头 + 自动扩轴
 - vec3d_drop(ax, vec, label="", color=COLORS['blue'], origin=(0,0,0)): 三维落影矢量箭头
+- draw_box(ax, xy, text, color=COLORS['blue'], size=None, facecolor=None, fontsize=9.5) -> artist: 圆角公式框（size=None自适应，传(w,h)固定对齐）
+- flow_arrow(ax, start, end, label="", color=COLORS['gray'], rad=0.0): 连接坐标或draw_box对象并可附白底短标
 - heatmap(ax, data, mask=None, fmt=".2g", vcenter_zero=True, cmap=None): 热力图 + 屏蔽格斜纹
 - note_box(ax, text, loc="auto", color="#334155"): 自动避开曲线的最空角落浅底说明框
 - label_point(ax, xy, text, offset=None, color=COLORS['blue'], dot=True): 16向防压线白底点位标注
 - save_svg(fig, svg_path=None, html_path=None, preview_png=None) -> str: 矢量文字转曲导出瘦身SVG
-提示：图内上下标一律用 $...$（勿直接敲裸上下标如 N₂ 或 10⁻⁸），不用 \mathcal，含公式文字无需加粗。
+提示：上下标一律用 $...$（勿敲裸上下标如 N₂ 或 10⁻⁸），中文放 $...$ 外，不用 \mathcal 与 \begin{...}（分块阵用矩形分格），含公式无需加粗。
 """
 from __future__ import annotations
-import atexit, io, pathlib, re, sys
+import atexit, colorsys, importlib.util, io, pathlib, re, sys
 import matplotlib
 matplotlib.use("Agg")
 from matplotlib import cycler, patches
@@ -104,6 +107,107 @@ def new_3d_fig(figsize: tuple[float, float] = (6.6, 3.3), elev: float = 28.0, az
     ax.view_init(elev=elev, azim=azim)
     ax.xaxis.pane.fill = ax.yaxis.pane.fill = ax.zaxis.pane.fill = False
     return fig, ax
+
+
+def _soft_tint(color: str, mix: float = 0.90) -> str:
+    try:
+        rgb = mcolors.to_rgb(color)
+    except Exception:
+        return "#FFFFFF"
+    if max(rgb) - min(rgb) < 0.08:
+        return "#FFFFFF"
+    tinted = tuple((1.0 - mix) * ch + mix for ch in rgb)
+    return mcolors.to_hex(tinted)
+
+
+def new_diagram(
+    figsize: tuple[float, float] = (7.8, 3.6),
+    xlim: tuple[float, float] = (0.0, 10.0),
+    ylim: tuple[float, float] = (0.0, 4.8),
+    facecolor: str = "#F8FAFC",
+):
+    apply_rc()
+    fig, ax = plt.subplots(figsize=figsize, layout="constrained")
+    fig.patch.set_facecolor(facecolor)
+    ax.set_facecolor(facecolor)
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.axis("off")
+    return fig, ax
+
+
+def draw_box(
+    ax,
+    xy: tuple[float, float],
+    text: str,
+    color: str = COLORS["blue"],
+    size: tuple[float, float] | None = None,
+    facecolor: str | None = None,
+    fontsize: float = 9.5,
+    text_color: str = "#0F172A",
+    lw: float = 1.4,
+):
+    cx, cy = map(float, xy)
+    bg = _soft_tint(color) if facecolor is None else facecolor
+    w = "normal" if "$" in text else "bold"
+    if size is None:
+        t = ax.text(
+            cx, cy, text, ha="center", va="center", color=text_color, fontsize=fontsize,
+            weight=w, linespacing=1.35, zorder=4,
+            bbox=dict(boxstyle="round,pad=0.45,rounding_size=0.18", facecolor=bg, edgecolor=color, lw=lw),
+        )
+        t._study_box_center = (cx, cy)
+        return t
+    bw, bh = map(float, size)
+    r = min(0.14, 0.18 * min(bw, bh))
+    rect = patches.FancyBboxPatch(
+        (cx - bw / 2.0, cy - bh / 2.0), bw, bh,
+        boxstyle=f"round,pad=0.0,rounding_size={r}",
+        facecolor=bg, edgecolor=color, lw=lw, zorder=3,
+    )
+    ax.add_patch(rect)
+    t = ax.text(cx, cy, text, ha="center", va="center", color=text_color, fontsize=fontsize, weight=w, linespacing=1.35, zorder=4)
+    t._study_box_patch = rect
+    t._study_box_center = (cx, cy)
+    return t
+
+
+def _endpoint_xy(ep) -> tuple[float, float]:
+    if hasattr(ep, "_study_box_center"):
+        return ep._study_box_center
+    if hasattr(ep, "get_position"):
+        return tuple(map(float, ep.get_position()))
+    return (float(ep[0]), float(ep[1]))
+
+
+def flow_arrow(
+    ax,
+    start,
+    end,
+    label: str = "",
+    color: str = COLORS["gray"],
+    rad: float = 0.0,
+    lw: float = 1.6,
+    fontsize: float = 8.6,
+):
+    p0, p1 = _endpoint_xy(start), _endpoint_xy(end)
+    arr = patches.FancyArrowPatch(
+        p0, p1, arrowstyle="-|>", mutation_scale=13,
+        connectionstyle=f"arc3,rad={rad}", color=color, lw=lw,
+        shrinkA=2, shrinkB=2, zorder=2.5,
+    )
+    ax.add_patch(arr)
+    arr._study_flow_endpoints = (start, end, float(rad))
+    if label:
+        mx = 0.5 * (p0[0] + p1[0]) + 0.5 * rad * (p1[1] - p0[1])
+        my = 0.5 * (p0[1] + p1[1]) - 0.5 * rad * (p1[0] - p0[0])
+        lbl = ax.text(
+            mx, my, label, ha="center", va="center", color=color, fontsize=fontsize,
+            weight="normal", linespacing=1.25, zorder=5,
+            bbox=dict(boxstyle="round,pad=0.18", facecolor="white", edgecolor="none", alpha=0.92),
+        )
+        arr._study_flow_label = lbl
+    return arr
 
 
 def vec2d(ax, vec, label: str = "", color: str = COLORS["blue"], origin=(0.0, 0.0)) -> None:
@@ -211,10 +315,61 @@ def _collect_scatter_display(ax) -> np.ndarray:
 
 
 def _text_bbox_px(t, renderer, use_patch: bool = True):
-    patch = t.get_bbox_patch() if use_patch else None
+    patch = (t.get_bbox_patch() or getattr(t, "_study_box_patch", None)) if use_patch else None
     if patch is not None:
         return patch.get_window_extent(renderer)
     return matplotlib.text.Text.get_window_extent(t, renderer)
+
+
+def _ray_box_exit_px(origin_px: tuple[float, float], target_px: tuple[float, float], bb, pad_px: float = 3.0) -> tuple[float, float]:
+    sx, sy = origin_px
+    dx, dy = target_px[0] - sx, target_px[1] - sy
+    if abs(dx) < 1e-6 and abs(dy) < 1e-6:
+        return origin_px
+    bx0, by0, bx1, by1 = bb.x0 - pad_px, bb.y0 - pad_px, bb.x1 + pad_px, bb.y1 + pad_px
+    ts: list[float] = []
+    if dx > 1e-6:
+        ts.append((bx1 - sx) / dx)
+    elif dx < -1e-6:
+        ts.append((bx0 - sx) / dx)
+    if dy > 1e-6:
+        ts.append((by1 - sy) / dy)
+    elif dy < -1e-6:
+        ts.append((by0 - sy) / dy)
+    pos_ts = [t for t in ts if t > 0]
+    if not pos_ts:
+        return origin_px
+    t = min(pos_ts)
+    if t >= 0.95:
+        return origin_px
+    return (sx + t * dx, sy + t * dy)
+
+
+def _resolve_flow_arrows(fig) -> None:
+    renderer = fig.canvas.get_renderer()
+    for ax in fig.axes:
+        if hasattr(ax, "zaxis"):
+            continue
+        inv = ax.transData.inverted()
+        for pt in ax.patches:
+            ep = getattr(pt, "_study_flow_endpoints", None)
+            if ep is None:
+                continue
+            start, end, rad = ep
+            q0 = tuple(map(float, ax.transData.transform(_endpoint_xy(start))))
+            q1 = tuple(map(float, ax.transData.transform(_endpoint_xy(end))))
+            ctrl = (0.5 * (q0[0] + q1[0]) + rad * (q1[1] - q0[1]), 0.5 * (q0[1] + q1[1]) - rad * (q1[0] - q0[0]))
+            q0_edge = _ray_box_exit_px(q0, ctrl if abs(rad) > 1e-6 else q1, _text_bbox_px(start, renderer, use_patch=True)) if isinstance(start, matplotlib.text.Text) else q0
+            q1_edge = _ray_box_exit_px(q1, ctrl if abs(rad) > 1e-6 else q0, _text_bbox_px(end, renderer, use_patch=True)) if isinstance(end, matplotlib.text.Text) else q1
+            p0_new = tuple(map(float, inv.transform(q0_edge)))
+            p1_new = tuple(map(float, inv.transform(q1_edge)))
+            pt.set_positions(p0_new, p1_new)
+            if (lbl := getattr(pt, "_study_flow_label", None)) is not None:
+                qm = (
+                    0.5 * (q0_edge[0] + q1_edge[0]) + 0.5 * rad * (q1_edge[1] - q0_edge[1]),
+                    0.5 * (q0_edge[1] + q1_edge[1]) - 0.5 * rad * (q1_edge[0] - q0_edge[0]),
+                )
+                lbl.set_position(tuple(map(float, inv.transform(qm))))
 
 
 def _rect_overlap_area(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
@@ -384,7 +539,7 @@ def _audit_figure(fig) -> list[str]:
     issues: list[str] = []
     renderer = fig.canvas.get_renderer()
     fig_bb = fig.bbox
-    color_clusters: list[tuple[float, float, float]] = []
+    hue_clusters: list[float] = []
 
     def add_color(c) -> None:
         try:
@@ -393,8 +548,11 @@ def _audit_figure(fig) -> list[str]:
             return
         if max(rgb) - min(rgb) < 0.12:
             return
-        if not any(float(np.linalg.norm(np.array(rgb) - np.array(u))) < 0.12 for u in color_clusters):
-            color_clusters.append(rgb)
+        h, s, v = colorsys.rgb_to_hsv(*rgb)
+        if s < 0.14 or v < 0.22:
+            return
+        if not any(min(abs(h - ch), 1.0 - abs(h - ch)) < (25.0 / 360.0) for ch in hue_clusters):
+            hue_clusters.append(h)
 
     for idx, ax in enumerate(fig.axes, start=1):
         tag = f"子图{idx}" if len(fig.axes) > 1 else "图内"
@@ -409,11 +567,25 @@ def _audit_figure(fig) -> list[str]:
                     for col_rgba in getattr(col, getter)():
                         if len(col_rgba) < 4 or col_rgba[3] > 0:
                             add_color(col_rgba[:3])
+        for pt in ax.patches:
+            if not _is_visible_artist(pt):
+                continue
+            for getter in ("get_edgecolor", "get_facecolor"):
+                if hasattr(pt, getter):
+                    col_rgba = getattr(pt, getter)()
+                    if len(col_rgba) < 4 or col_rgba[3] > 0.05:
+                        add_color(col_rgba[:3])
         if hasattr(ax, "zaxis"):
             continue
 
         ax_bb = ax.bbox
         in_texts = [t for t in ax.texts if not getattr(t, "_study_cell_text", False) and t.get_text().strip() and _is_visible_artist(t)]
+        for t in in_texts:
+            if (t_bp := t.get_bbox_patch()) is not None and _is_visible_artist(t_bp):
+                for getter in ("get_edgecolor", "get_facecolor"):
+                    col_rgba = getattr(t_bp, getter)()
+                    if len(col_rgba) < 4 or col_rgba[3] > 0.05:
+                        add_color(col_rgba[:3])
         all_texts = [*in_texts, *[t for t in (ax.title, ax.xaxis.label, ax.yaxis.label) if t.get_text().strip() and _is_visible_artist(t)]]
         t_boxes = [(t, _text_bbox_px(t, renderer, use_patch=True)) for t in all_texts]
         for i in range(len(t_boxes)):
@@ -439,6 +611,10 @@ def _audit_figure(fig) -> list[str]:
                 if hits >= 2:
                     issues.append(f"{tag}文字 {t.get_text().splitlines()[0][:12]!r} 压到曲线")
             bb = _text_bbox_px(t, renderer, use_patch=True)
+            if (bp := getattr(t, "_study_box_patch", None)) is not None:
+                pbb = bp.get_window_extent(renderer)
+                if tb.x0 < pbb.x0 - 1.5 or tb.x1 > pbb.x1 + 1.5 or tb.y0 < pbb.y0 - 1.5 or tb.y1 > pbb.y1 + 1.5:
+                    issues.append(f"{tag}文字 {t.get_text().splitlines()[0][:12]!r} 撑出固定框体")
             area = max(float(bb.width * bb.height), 1.0)
             in_ax = _rect_overlap_area((bb.x0, bb.y0, bb.x1, bb.y1), (ax_bb.x0, ax_bb.y0, ax_bb.x1, ax_bb.y1))
             if in_ax / area < 0.75:
@@ -473,16 +649,56 @@ def _audit_figure(fig) -> list[str]:
                 if min_d < 6.0:
                     issues.append(f"{tag}散点间距过近（{min_d:.1f}px < 6px）可能挤叠")
 
-    if len(color_clusters) > 3:
-        issues.append(f"整图主色达 {len(color_clusters)} 种，超过 3 种上限")
+    if len(hue_clusters) > 3:
+        issues.append(f"整图主色达 {len(hue_clusters)} 种，超过 3 种上限")
     return list(dict.fromkeys(issues))
 
 
+_CACHED_SOURCE_REF_RE: re.Pattern[str] | None | bool = False
+
+
+def _load_source_ref_re() -> re.Pattern[str] | None:
+    global _CACHED_SOURCE_REF_RE
+    if _CACHED_SOURCE_REF_RE is not False:
+        return _CACHED_SOURCE_REF_RE
+    chk = pathlib.Path(__file__).with_name("check_svg.py")
+    if not chk.exists():
+        _CACHED_SOURCE_REF_RE = None
+        return None
+    prev_dont_write = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        spec = importlib.util.spec_from_file_location("_study_check_svg_ref", chk)
+        if spec and spec.loader:
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            _CACHED_SOURCE_REF_RE = getattr(mod, "_SOURCE_REF_RE", None)
+            return _CACHED_SOURCE_REF_RE
+    except Exception:
+        pass
+    finally:
+        sys.dont_write_bytecode = prev_dont_write
+    _CACHED_SOURCE_REF_RE = None
+    return None
+
+
 def _check_texts_and_sanitize(fig) -> None:
+    src_ref_re = _load_source_ref_re()
     for t in fig.findobj(matplotlib.text.Text):
         txt = t.get_text()
         if not txt:
             continue
+        for m_math in re.finditer(r"\$([^$]*)\$", txt):
+            inner = m_math.group(1)
+            if re.search(r"\\begin\s*\{", inner):
+                plt.close(fig)
+                raise ValueError("Matplotlib mathtext 不支持 \\begin{...} 环境，分块矩阵或分段式请改用矩形框分格或分行 $...$ 绘制")
+            if re.search(r"[\u4e00-\u9fff]", inner):
+                plt.close(fig)
+                raise ValueError(f"$...$ 内含中文 {inner!r} 会变缺字方块，请将中文移到 $...$ 外面")
+        if src_ref_re is not None and (m_ref := src_ref_re.search(txt)):
+            plt.close(fig)
+            raise ValueError(f"图内文字夹带原件式号或章节索引 {m_ref.group(0)!r}，请改写算式、符号或人话说明")
         plain = re.sub(r"\$[^$]*\$", "", txt)
         if m := _BARE_SUBSUP_RE.search(plain):
             plt.close(fig)
@@ -496,6 +712,7 @@ def _check_texts_and_sanitize(fig) -> None:
 def save_svg(fig, svg_path: str | pathlib.Path | None = None, html_path: str | pathlib.Path | None = None, preview_png: str | pathlib.Path | None = None) -> str:
     _check_texts_and_sanitize(fig)
     fig.canvas.draw()
+    _resolve_flow_arrows(fig)
     _resolve_auto_notes(fig)
     _resolve_auto_annotations(fig)
     fig.canvas.draw()
