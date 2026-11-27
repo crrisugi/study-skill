@@ -781,9 +781,65 @@ def smoke_test_update_checker() -> list[str]:
             git_skill.mkdir(parents=True)
             assert mod.detect_install_channel(git_skill, cwd=root, home_dir=home)["channel"] == "git-clone"
 
+            official_repo = root / "custom-dir"
+            (official_repo / ".git").mkdir(parents=True)
+            (official_repo / ".git" / "config").write_text(
+                '[remote "origin"]\n\turl = https://github.com/crrisugi/study-skill.git\n',
+                encoding="utf-8",
+            )
+            off_skill = official_repo / "skills" / "study"
+            off_skill.mkdir(parents=True)
+            assert mod.detect_install_channel(off_skill, cwd=root, home_dir=home)["channel"] == "git-clone"
+
+            dotfiles = root / "my-dotfiles"
+            (dotfiles / ".git").mkdir(parents=True)
+            (dotfiles / ".git" / "config").write_text(
+                '[remote "origin"]\n\turl = https://github.com/example/dotfiles.git\n',
+                encoding="utf-8",
+            )
+            dot_skill = dotfiles / "skills" / "study"
+            dot_skill.mkdir(parents=True)
+            dot_ch = mod.detect_install_channel(dot_skill, cwd=root, home_dir=home)
+            assert dot_ch["channel"] == "manual-copy", dot_ch
+            assert "uv run --no-project" in dot_ch.get("alt_upgrade_cmd", ""), dot_ch
+
+            (home / ".agents" / "skills" / "study-feedback").mkdir(parents=True)
+            (home / ".agents" / "skills" / "study-feedback" / "SKILL.md").write_text("# fb\n", encoding="utf-8")
+            both_ch = mod.detect_install_channel(g_skill, cwd=root, home_dir=home)
+            assert both_ch["channel"] == "npx-skills" and "study study-feedback" in both_ch["upgrade_cmd"], both_ch
+
+            ext_skill = root / "ext_drive" / ".gemini" / "config" / "skills" / "study"
+            ext_skill.mkdir(parents=True)
+            ext_ch = mod.detect_install_channel(ext_skill, cwd=root / "work", home_dir=home)
+            assert ext_ch["channel"] == "npx-skills" and ext_ch["scope"] == "global", ext_ch
+
             man_skill = root / "manual" / "study"
             man_skill.mkdir(parents=True)
-            assert mod.detect_install_channel(man_skill, cwd=root, home_dir=home)["channel"] == "manual-copy"
+            man_ch = mod.detect_install_channel(man_skill, cwd=root, home_dir=home)
+            assert man_ch["channel"] == "manual-copy", man_ch
+            assert "uv run --no-project" in man_ch.get("alt_upgrade_cmd", ""), man_ch
+
+            import io as _io
+            (man_skill / "VERSION").write_text("0.4.0\n", encoding="utf-8")
+            upd_cache = root / "upd_cache.json"
+            upd_cache.write_text(
+                '{"last_checked_at": 9999999999.0, "last_status": "ok", "latest_version": "9.9.9", "latest_tag": "v9.9.9"}',
+                encoding="utf-8",
+            )
+            saved_env = {k: os.environ.get(k) for k in ("STUDY_UPDATE_CACHE_PATH", *mod.OPT_OUT_ENV_VARS)}
+            try:
+                for k in mod.OPT_OUT_ENV_VARS:
+                    os.environ.pop(k, None)
+                os.environ["STUDY_UPDATE_CACHE_PATH"] = str(upd_cache)
+                nbuf = _io.StringIO()
+                assert mod.maybe_notify_sync(man_skill, stream=nbuf) is True
+                assert "[study] 发现新版 v9.9.9" in nbuf.getvalue(), nbuf.getvalue()
+            finally:
+                for k, v in saved_env.items():
+                    if v is None:
+                        os.environ.pop(k, None)
+                    else:
+                        os.environ[k] = v
     except AssertionError as err:
         return [f"check_update 离线断言失败: {err}"]
     except Exception as err:

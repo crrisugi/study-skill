@@ -29,7 +29,7 @@ description: >-
 
 - **外发收口**：生成诊断单后按以下四步收口，未获用户明确同意不得静默外发：
   1. **先出单**：将上述诊断块包在 Markdown 代码块内输出，提醒用户核对标题与正文未含涉密代号或未发表专有参数。
-  2. **只读探测**：静默运行 `python "<本技能目录>/scripts/submit_feedback.py" --probe` 探测 `gh` 安装与登录状态；无系统 Python 时改用 `python3` 或 `uv run --project "../study/scripts" python ...` 兜底。
+  2. **只读探测**：静默运行 `python "<本技能目录>/scripts/submit_feedback.py" --probe` 探测 `gh` 安装与登录状态；无系统 Python 时改用 `python3` 或 `uv run --no-project ...` 兜底。
   3. **用户选路**：推荐将邮箱项放首位，并简要说明点选一下即可自动发送、免登录免配置。`gh` 可用且已登录时三选一：① 推送到维护者邮箱（推荐：点选即自动发出）；② 一键提交到 `crrisugi/study-skill` GitHub Issue；③ 仅保留当前代码块。否则二选一：① 推送到维护者邮箱（推荐：点选即自动发出）；② 仅保留代码块并附 `https://github.com/crrisugi/study-skill/issues/new` 供手动提交。
-  4. **通道执行**：经用户同意后，将脱敏诊断单写入系统临时文件，运行 `python "<本技能目录>/scripts/submit_feedback.py" --channel github|email --title "<一句话问题标题>" --body-file "<临时文件路径>" --delete-body-file`；无系统 Python 时改用 `python3` 或 `uv run` 兜底，成功告知结果或链接，环境缺失或外发失败时保留代码块兜底。
-- **版本提示**：同级存在 `study` 技能目录时，结束前可顺带运行 `uv run "<同级study目录>/scripts/check_update.py" --passive`；有新版则在末尾用一行告知版本号与对应升级命令，绝不自动覆盖本地文件。
+  4. **通道执行**：经用户同意后，将脱敏诊断单写入系统临时文件，运行 `python "<本技能目录>/scripts/submit_feedback.py" --channel github|email --title "<一句话问题标题>" --body-file "<临时文件路径>" --delete-body-file`；无系统 Python 时改用 `python3` 或 `uv run --no-project` 兜底，成功告知结果或链接，环境缺失或外发失败时保留代码块兜底。
+- **版本提示**：仅在同级存在 `study` 技能目录时，结束前顺带运行 `python "<同级study目录>/scripts/check_update.py" --notify`，无系统 Python 时改用 `python3` 或 `uv run --no-project` 兜底；有新版输出则在末尾用一行告知版本号与升级命令，绝不自动覆盖本地文件。

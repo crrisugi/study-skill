@@ -756,8 +756,19 @@ def save_svg(fig, svg_path: str | pathlib.Path | None = None, html_path: str | p
 
 def _notify_update() -> None:
     try:
-        import check_update
-        check_update.maybe_notify(pathlib.Path(__file__).resolve().parents[1])
+        upd = pathlib.Path(__file__).with_name("check_update.py")
+        if not upd.is_file():
+            return
+        prev_dont_write = sys.dont_write_bytecode
+        sys.dont_write_bytecode = True
+        try:
+            spec = importlib.util.spec_from_file_location("_study_check_update", upd)
+            if spec and spec.loader:
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                mod.maybe_notify(upd.resolve().parents[1])
+        finally:
+            sys.dont_write_bytecode = prev_dont_write
     except Exception:
         pass
 

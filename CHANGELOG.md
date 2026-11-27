@@ -2,6 +2,13 @@
 
 All notable changes to `study-skill` will be documented in this file.
 
+## [0.4.1] - 2026-11-27
+
+### Changed
+- **打通无绘图场景更新感知与结课/反馈收尾触达**：为纯标准库笔记校验脚本 `skills/study/scripts/check_notes.py` 补齐退出时自动后台缓存更新感知，并统一按绝对脚本路径加载 `check_update.py`；在 `skills/study/workflows/archiving.md` 增加归档或结课收尾时向用户转达 `[study] 发现新版` 提示的轻量约定（同会话最多一次，不打断推演）；在 `check_update.py` 新增 `--notify` 短超时同步刷新模式并接入 `skills/study-feedback/SKILL.md`，消除首次冷启动提报轮空。
+- **消除纯标准库脚本的 `uv` 重型依赖构建摩擦**：将 `check_update.py`、`check_notes.py`、`check_svg.py`、`submit_feedback.py` 及 `README.md` 中的 `uv run` 调用统一改为优先系统 `python` 或 `uv run --no-project`，避免检查更新或轻量体检时误拉取科学绘图虚拟环境依赖。
+- **加固安装渠道识别与同级联动**：`detect_install_channel` 新增基于 `.git/config` remote 的官方仓库识别以排除个人 `dotfiles` 仓库误判；支持字面软链路径与跨盘全局宿主技能目录判定 `npx skills` 全局安装；当同级存在 `study-feedback` 时提示一并执行 `npx skills update study study-feedback`。
+
 ## [0.4.0] - 2026-11-27
 
 ### Changed

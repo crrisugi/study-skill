@@ -30,6 +30,7 @@ SUCCESS_TTL_SECONDS = 72 * 3600
 FAILURE_TTL_SECONDS = 6 * 3600
 REFRESH_DEBOUNCE_SECONDS = 60
 HTTP_TIMEOUT_SECONDS = 2.5
+NOTIFY_TIMEOUT_SECONDS = 2.0
 UPGRADE_TIMEOUT_SECONDS = 20.0
 
 OPT_OUT_ENV_VARS = ("STUDY_NO_UPDATE_CHECK", "NO_UPDATE_NOTIFIER", "CI", "GITHUB_ACTIONS")
@@ -196,6 +197,115 @@ def _is_subpath(child: pathlib.Path, parent: pathlib.Path) -> bool:
         return False
 
 
+def _is_lexical_subpath(child: pathlib.Path, parent: pathlib.Path) -> bool:
+    try:
+        c_abs = pathlib.PurePath(os.path.normcase(os.path.abspath(str(child))))
+        p_abs = pathlib.PurePath(os.path.normcase(os.path.abspath(str(parent))))
+        c_abs.relative_to(p_abs)
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def _is_within(raw_child: pathlib.Path, resolved_child: pathlib.Path, parent: pathlib.Path) -> bool:
+    return _is_lexical_subpath(raw_child, parent) or _is_subpath(resolved_child, parent)
+
+
+_GLOBAL_SKILL_DIR_MARKERS = (
+    "/.agents/skills/",
+    "/.claude/skills/",
+    "/.gemini/config/skills/",
+    "/.gemini/skills/",
+    "/.cursor/skills/",
+    "/.codex/skills/",
+    "/.windsurf/skills/",
+)
+_STUDY_REMOTE_RE = re.compile(r"(?:^|[/:])study(?:-skill)?(?:\.git)?/?$", re.I)
+
+
+def _looks_like_global_skill_dir(path: pathlib.Path, work_cwd: pathlib.Path) -> bool:
+    if _is_lexical_subpath(path, work_cwd) or _is_subpath(path, work_cwd):
+        return False
+    norm = os.path.abspath(str(path)).replace("\\", "/").lower().rstrip("/") + "/"
+    return any(marker in norm for marker in _GLOBAL_SKILL_DIR_MARKERS)
+
+
+def _npx_target_skills(raw_dir: pathlib.Path, resolved_dir: pathlib.Path, lock_path: pathlib.Path) -> str:
+    if (
+        (raw_dir.parent / "study-feedback" / "SKILL.md").is_file()
+        or (resolved_dir.parent / "study-feedback" / "SKILL.md").is_file()
+        or _read_lock_has_skill(lock_path, ("study-feedback",))
+    ):
+        return "study study-feedback"
+    return "study"
+
+
+def _resolve_git_config_path(git_root: pathlib.Path) -> pathlib.Path | None:
+    dot_git = git_root / ".git"
+    if dot_git.is_dir():
+        cfg = dot_git / "config"
+        return cfg if cfg.is_file() else None
+    if dot_git.is_file():
+        try:
+            txt = dot_git.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            return None
+        m = re.search(r"(?im)^gitdir:\s*(.+)$", txt)
+        if not m:
+            return None
+        raw_gd = m.group(1).strip()
+        gd = pathlib.Path(raw_gd)
+        if not gd.is_absolute():
+            gd = (git_root / gd).resolve()
+        commondir = gd / "commondir"
+        if commondir.is_file():
+            try:
+                rel_cd = commondir.read_text(encoding="utf-8", errors="ignore").strip()
+                if rel_cd:
+                    cd_path = pathlib.Path(rel_cd)
+                    gd = cd_path if cd_path.is_absolute() else (gd / cd_path).resolve()
+            except OSError:
+                pass
+        cfg = gd / "config"
+        return cfg if cfg.is_file() else None
+    return None
+
+
+def _read_git_remotes(git_root: pathlib.Path) -> list[str]:
+    cfg = _resolve_git_config_path(git_root)
+    if cfg is None:
+        return []
+    try:
+        lines = cfg.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except OSError:
+        return []
+    urls: list[str] = []
+    in_remote = False
+    for line in lines:
+        s = line.strip()
+        if not s or s.startswith("#") or s.startswith(";"):
+            continue
+        if s.startswith("[") and s.endswith("]"):
+            in_remote = s.lower().startswith("[remote ")
+            continue
+        if in_remote:
+            m = re.match(r"url\s*=\s*(.+)$", s, re.I)
+            if m:
+                urls.append(m.group(1).strip())
+    return urls
+
+
+def _is_study_git_repo(git_root: pathlib.Path, candidate: pathlib.Path) -> bool:
+    if candidate != git_root and candidate != (git_root / "skills" / "study"):
+        return False
+    remotes = _read_git_remotes(git_root)
+    if remotes:
+        return any(_STUDY_REMOTE_RE.search(u.strip()) for u in remotes)
+    if candidate == git_root:
+        return True
+    return git_root.name.lower() == "study-skill" or (git_root / "VERSION").is_file()
+
+
 def detect_install_channel(
     skill_dir: pathlib.Path | None = None,
     cwd: pathlib.Path | None = None,
@@ -226,11 +336,12 @@ def detect_install_channel(
     for candidate_root in (raw_dir, work_cwd):
         for base in (candidate_root, *candidate_root.parents):
             proj_lock = base / "skills-lock.json"
-            if _read_lock_has_skill(proj_lock) and (_is_subpath(raw_dir, base) or _is_subpath(resolved_dir, base)):
+            if _read_lock_has_skill(proj_lock) and _is_within(raw_dir, resolved_dir, base):
+                targets = _npx_target_skills(raw_dir, resolved_dir, proj_lock)
                 return {
                     "channel": "npx-skills",
                     "scope": "project",
-                    "upgrade_cmd": "npx skills update study",
+                    "upgrade_cmd": f"npx skills update {targets}",
                     "check_cmd": "npx skills check",
                 }
             if (base / ".git").exists():
@@ -238,7 +349,7 @@ def detect_install_channel(
 
     for candidate in (resolved_dir, raw_dir):
         if git_root := _find_git_root(candidate):
-            if candidate == git_root or candidate == (git_root / "skills" / "study"):
+            if _is_study_git_repo(git_root, candidate):
                 return {
                     "channel": "git-clone",
                     "repo_root": str(git_root),
@@ -249,13 +360,18 @@ def detect_install_channel(
     global_locks = [user_home / ".agents" / ".skill-lock.json"]
     if xdg_state:
         global_locks.insert(0, pathlib.Path(xdg_state) / "skills" / ".skill-lock.json")
-    if _is_subpath(raw_dir, user_home) or _is_subpath(resolved_dir, user_home):
+    if (
+        _is_within(raw_dir, resolved_dir, user_home)
+        or _looks_like_global_skill_dir(raw_dir, work_cwd)
+        or _looks_like_global_skill_dir(resolved_dir, work_cwd)
+    ):
         for g_lock in global_locks:
             if _read_lock_has_skill(g_lock):
+                targets = _npx_target_skills(raw_dir, resolved_dir, g_lock)
                 return {
                     "channel": "npx-skills",
                     "scope": "global",
-                    "upgrade_cmd": "npx skills update study -g",
+                    "upgrade_cmd": f"npx skills update {targets} -g",
                     "check_cmd": "npx skills check -g",
                 }
 
@@ -263,15 +379,15 @@ def detect_install_channel(
     return {
         "channel": "manual-copy",
         "upgrade_cmd": "npx skills add crrisugi/study-skill",
-        "alt_upgrade_cmd": f'uv run "{script_self}" --upgrade',
+        "alt_upgrade_cmd": f'uv run --no-project "{script_self}" --upgrade',
     }
 
 
-def _refresh_cache_now(skill_dir: pathlib.Path | None = None) -> dict:
+def _refresh_cache_now(skill_dir: pathlib.Path | None = None, timeout: float = HTTP_TIMEOUT_SECONDS) -> dict:
     cache_path = get_cache_path()
     cache = load_cache(cache_path)
     now = time.time()
-    latest_ver, latest_tag = fetch_latest_release()
+    latest_ver, latest_tag = fetch_latest_release(timeout=timeout)
     cache["last_checked_at"] = now
     cache["current_version"] = read_local_version(skill_dir)
     if latest_ver and latest_tag:
@@ -354,6 +470,36 @@ def maybe_notify(skill_dir: pathlib.Path | None = None) -> None:
         )
     except Exception:
         pass
+
+
+def maybe_notify_sync(skill_dir: pathlib.Path | None = None, stream=None) -> bool:
+    out = stream or sys.stdout
+    try:
+        if is_env_disabled():
+            return False
+        cache_path = get_cache_path()
+        cache = load_cache(cache_path)
+        if cache.get("disabled"):
+            return False
+        now = time.time()
+        last_checked = float(cache.get("last_checked_at") or 0)
+        ttl = SUCCESS_TTL_SECONDS if cache.get("last_status") == "ok" else FAILURE_TTL_SECONDS
+        if last_checked == 0 or (now - last_checked) >= ttl:
+            cache = _refresh_cache_now(skill_dir, timeout=NOTIFY_TIMEOUT_SECONDS)
+
+        current_ver = read_local_version(skill_dir)
+        latest_ver = str(cache.get("latest_version") or "")
+        if _should_suppress_notice(cache, latest_ver, current_ver, time.time()):
+            return False
+        channel_info = detect_install_channel(skill_dir)
+        hint = _format_upgrade_hint(channel_info)
+        print(
+            f"[study] 发现新版 v{latest_ver}（当前 v{current_ver}）· {hint} · 更新说明：{RELEASES_PAGE_URL}",
+            file=out,
+        )
+        return True
+    except Exception:
+        return False
 
 
 def _extract_changelog_section(changelog_text: str, version: str) -> str:
@@ -513,6 +659,7 @@ def run_upgrade(skill_dir: pathlib.Path, yes: bool = False) -> int:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="study 伴学技能跨宿主更新探测与手动升级工具")
     ap.add_argument("--passive", action="store_true", help="仅读取缓存，过期时后台刷新，有新版则轻量提示")
+    ap.add_argument("--notify", action="store_true", help="优先读缓存，过期时短超时同步刷新一次，有新版则向 stdout 输出一行提示")
     ap.add_argument("--refresh-cache", action="store_true", help="后台刷新本地版本缓存")
     ap.add_argument("--check", action="store_true", help="立即联网检查最新版本并输出当前安装来源")
     ap.add_argument("--json", action="store_true", help="配合 --check 以 JSON 格式输出")
@@ -565,6 +712,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.passive:
         maybe_notify(skill_dir)
+        return 0
+
+    if args.notify:
+        maybe_notify_sync(skill_dir)
         return 0
 
     if args.upgrade:

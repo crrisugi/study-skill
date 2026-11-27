@@ -70,26 +70,26 @@ npx skills update
 - **Antigravity / Gemini**：`~/.gemini/config/skills/`（或工作区 `.agents/skills/`）
 - **Codex / 通用工作区**：项目根目录 `.agents/skills/`
 
-若因权限限制改为**手动复制**目录，可运行内置更新工具拉取对应 Release Tag 升级（升级前会展示变更摘要并备份旧目录）：
+若因权限限制改为**手动复制**目录，可直接用 `python`（或 `uv run --no-project`，纯标准库零依赖秒开）运行内置更新工具拉取对应 Release Tag 升级（升级前会展示变更摘要并备份旧目录）：
 
 ```bash
-uv run skills/study/scripts/check_update.py --upgrade
+uv run --no-project skills/study/scripts/check_update.py --upgrade
 ```
 
 ## 版本更新感知与隐私退出
 
-- **非阻塞感知**：绘图底座退出时自动在后台刷新本地版本缓存（成功 `72` 小时、失败 `6` 小时负缓存），仅通过 GitHub Releases 重定向头探测最新版本，不消耗 REST API 配额；离线或沙箱网络异常时静默放行，不阻塞伴学流程。
-- **按来源分流**：脚本自动识别 `npx skills`、Git 克隆、宿主插件托管与手动复制目录，绝不越权覆盖托管渠道。
+- **非阻塞感知**：绘图底座与落盘验收脚本退出时自动在后台刷新本地版本缓存（成功 `72` 小时、失败 `6` 小时负缓存），仅通过 GitHub Releases 重定向头探测最新版本，不消耗 REST API 配额；离线或沙箱网络异常时静默放行，仅在归档结课或提报反馈收尾时按需附一行轻量提示，不打断伴学流程。
+- **按来源分流**：脚本自动识别 `npx skills`、官方 Git 克隆、宿主插件托管与手动复制目录，绝不越权覆盖托管渠道；同时安装 `study-feedback` 时提示一并升级。
 - **手动检查与退出控制**：
 
 ```bash
 # 主动检查最新版本与当前安装来源
-uv run skills/study/scripts/check_update.py --check
+uv run --no-project skills/study/scripts/check_update.py --check
 
 # 暂缓提醒 7 天 / 忽略特定版本 / 永久关闭
-uv run skills/study/scripts/check_update.py --snooze 7
-uv run skills/study/scripts/check_update.py --ignore-version 0.2.0
-uv run skills/study/scripts/check_update.py --disable
+uv run --no-project skills/study/scripts/check_update.py --snooze 7
+uv run --no-project skills/study/scripts/check_update.py --ignore-version 0.2.0
+uv run --no-project skills/study/scripts/check_update.py --disable
 ```
 
 亦可设置环境变量 `STUDY_NO_UPDATE_CHECK=1` 或 `NO_UPDATE_NOTIFIER=1` 禁用检查（`CI` 环境默认自动禁用）。
