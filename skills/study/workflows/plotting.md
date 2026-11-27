@@ -39,5 +39,5 @@
 ## 五、存盘落点与跨宿主展示
 
 1. **先存临时区再入库**：讲卡展示、靶向直答与纯会话伴读期间，新画 `.svg` 及复制或截取的原图一律先存系统临时目录，不提前写入工作区；仅在用户确认落盘该卡时，按 [archiving.md](archiving.md) 存入笔记目录 `assets/`。
-2. **微件内联展示**：宿主支持 `<Artifact Directory>` 与 `<agent-embed>` 内联微件时，必须走内联微件展示，不改贴本地 `file:///` 链接替代。先用宿主文件创建工具建 `<Artifact Directory>/卡XX_plot.html` 空文件并设 `ArtifactMetadata: { UserFacing: true, RequestFeedback: false }`，再由绘图脚本传 `html_path` 或 `check_svg.py ... --html ...` 填入完整透明底网页，紧贴首次看图段下方用 `<agent-embed src="file:///<artifact_path>/卡XX_plot.html"></agent-embed>` 展示。复制或截取的位图原图同样转为内联图片写入透明底网页展示。
+2. **微件内联展示**：宿主支持 `<Artifact Directory>` 与 `<agent-embed>` 内联微件时，必须走内联微件展示，不改贴本地 `file:///` 链接替代。先用宿主文件创建工具建 `<Artifact Directory>/卡XX_图名.html` 空文件并设 `ArtifactMetadata: { UserFacing: true, RequestFeedback: false }`，同卡多图按图名区分，靶向直答省去卡号，再由绘图脚本传 `html_path` 或 `check_svg.py ... --html ...` 填入完整透明底网页，紧贴首次看图段下方用 `<agent-embed src="file:///<artifact_path>/卡XX_图名.html"></agent-embed>` 展示。复制或截取的位图原图同样转为内联图片写入透明底网页展示。
 3. **无微件回退**：其余宿主回退标准 Markdown 图片引用 `` `![图注](路径)` ``。
