@@ -39,7 +39,7 @@ study-skill/
 | `discrete-state.md` | 离散算法、指针与递归、状态机、并发协议与工程源码控制流 |
 | `proof-logic.md` | 逻辑量词、充要条件、数学归纳、定理证明与组合计数 |
 | `optimization-variational.md` | 不等式约束极值、拉格朗日/KKT、凸对偶间隙与变分法 |
-| `numerical-precision.md` | 浮点舍入抵消、低精度训练、网格差分稳定性与病态系统 |
+| `numerical-precision.md` | 离散采样混叠与窗宽边界、网格差分稳定性、浮点舍入与病态系统 |
 
 ## 环境前提
 
