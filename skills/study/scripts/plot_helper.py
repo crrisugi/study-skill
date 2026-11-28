@@ -1,7 +1,7 @@
 r"""study 伴学绘图底座与高频图元库（通过 uv run --project 调用；日常伴学期间只读不改）
 
 速查接口（未覆盖的新图型，直接用返回的原生 fig, ax 配合 Matplotlib / SciPy 自由绘制）：
-- COLORS: dict -> 语义高对比色盘 {'blue', 'green', 'orange', 'red', 'gray'}（单图主色 <= 3 种）
+- COLORS: dict -> 语义高对比色盘 {'blue', 'green', 'orange', 'red', 'gray'}（单图主色 <= 4 种）
 - BWR_CMAP / SEQ_CMAP -> 红蓝双极色盘 / 浅蓝顺序色盘
 - new_fig(figsize=(6.8, 3.2), **subplot_kw) -> (fig, ax): 自适应排版白底网格画布
 - new_subplots(nrows=1, ncols=2, figsize=None, **kwargs) -> (fig, axes): 自动宽幅对照画布
@@ -61,7 +61,7 @@ def apply_rc() -> None:
         "ytick.color": "#94A3B8",
         "xtick.labelcolor": "#475569",
         "ytick.labelcolor": "#475569",
-        "axes.prop_cycle": cycler(color=[COLORS["blue"], COLORS["red"], COLORS["green"]]),
+        "axes.prop_cycle": cycler(color=[COLORS["blue"], COLORS["red"], COLORS["green"], COLORS["orange"]]),
         "axes.xmargin": 0.06,
         "axes.ymargin": 0.12,
         "grid.color": "#E2E8F0",
@@ -649,41 +649,12 @@ def _audit_figure(fig) -> list[str]:
                 if min_d < 6.0:
                     issues.append(f"{tag}散点间距过近（{min_d:.1f}px < 6px）可能挤叠")
 
-    if len(hue_clusters) > 3:
-        issues.append(f"整图主色达 {len(hue_clusters)} 种，超过 3 种上限")
+    if len(hue_clusters) > 4:
+        issues.append(f"整图主色达 {len(hue_clusters)} 种，超过 4 种上限")
     return list(dict.fromkeys(issues))
 
 
-_CACHED_SOURCE_REF_RE: re.Pattern[str] | None | bool = False
-
-
-def _load_source_ref_re() -> re.Pattern[str] | None:
-    global _CACHED_SOURCE_REF_RE
-    if _CACHED_SOURCE_REF_RE is not False:
-        return _CACHED_SOURCE_REF_RE
-    chk = pathlib.Path(__file__).with_name("check_svg.py")
-    if not chk.exists():
-        _CACHED_SOURCE_REF_RE = None
-        return None
-    prev_dont_write = sys.dont_write_bytecode
-    sys.dont_write_bytecode = True
-    try:
-        spec = importlib.util.spec_from_file_location("_study_check_svg_ref", chk)
-        if spec and spec.loader:
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            _CACHED_SOURCE_REF_RE = getattr(mod, "_SOURCE_REF_RE", None)
-            return _CACHED_SOURCE_REF_RE
-    except Exception:
-        pass
-    finally:
-        sys.dont_write_bytecode = prev_dont_write
-    _CACHED_SOURCE_REF_RE = None
-    return None
-
-
 def _check_texts_and_sanitize(fig) -> None:
-    src_ref_re = _load_source_ref_re()
     for t in fig.findobj(matplotlib.text.Text):
         txt = t.get_text()
         if not txt:
@@ -696,9 +667,6 @@ def _check_texts_and_sanitize(fig) -> None:
             if re.search(r"[\u4e00-\u9fff]", inner):
                 plt.close(fig)
                 raise ValueError(f"$...$ 内含中文 {inner!r} 会变缺字方块，请将中文移到 $...$ 外面")
-        if src_ref_re is not None and (m_ref := src_ref_re.search(txt)):
-            plt.close(fig)
-            raise ValueError(f"图内文字夹带原件式号或章节索引 {m_ref.group(0)!r}，请改写算式、符号或人话说明")
         plain = re.sub(r"\$[^$]*\$", "", txt)
         if m := _BARE_SUBSUP_RE.search(plain):
             plt.close(fig)
@@ -730,8 +698,8 @@ def save_svg(fig, svg_path: str | pathlib.Path | None = None, html_path: str | p
     fig.savefig(buf, format="svg", bbox_inches="tight", pad_inches=0.08)
     plt.close(fig)
     raw = buf.getvalue()
-    if "STIXNonUnicode" in raw or any("\ue000" <= ch <= "\uf8ff" for ch in raw):
-        raise ValueError("SVG contains STIXNonUnicode/PUA glyphs (e.g. \\mathcal); use plain letters like V_I instead")
+    if any("\ue000" <= ch <= "\uf8ff" for ch in raw) or ("<text" in raw and "STIXNonUnicode" in raw):
+        raise ValueError("SVG contains unoutlined PUA/STIX text glyphs; keep svg.fonttype='path' or use plain letters")
     idx = raw.find("<svg")
     svg_str = raw[idx:].strip() if idx >= 0 else raw.strip()
     svg_str = re.sub(r"<metadata>.*?</metadata>", "", svg_str, flags=re.S)

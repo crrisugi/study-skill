@@ -3,7 +3,6 @@
 用法：
   python check_notes.py "<单张笔记.md路径>"
   python check_notes.py "<笔记目录路径>"
-  python check_notes.py --recap "<笔记目录路径>"
 """
 from __future__ import annotations
 
@@ -29,30 +28,14 @@ _EMBED_TAG_RE = re.compile(r"<agent-embed\b", re.I)
 _MD_IMAGE_RE = re.compile(r"!\[[^\]]*\]\(([^)\n]+)\)")
 _COLOR_CODE_RE = re.compile(r"(?:\\textcolor\b|\\color\s*\{|<span\b[^>]*\bcolor\s*:)", re.I)
 _ABS_TARGET_RE = re.compile(r"^(?:file:|https?://|[A-Za-z]:[/\\]|/|\\\\)", re.I)
-_CARD_ID_BODY = r"[0-9]+(?:\.[1-9][0-9]*)?_0(?:\.[1-9][0-9]*)?|[0-9]+(?:\.0(?:[A-Za-z]|\.[0-9]+)?|\.[1-9][0-9]*)?"
+_CARD_ID_BODY = r"[0-9]+(?:\.[1-9][0-9]*)?_0\.[1-9][0-9]*|[0-9]+(?:\.[1-9][0-9]*)?"
 _PLAN_ROW_RE = re.compile(rf"^\|\s*卡\s*({_CARD_ID_BODY})(?![\d.A-Za-z_])")
 _CARD_FILE_RE = re.compile(rf"^卡\s*({_CARD_ID_BODY})(?:[_\-\s]|$)")
-_PREREQ_NEW_RE = re.compile(r"^(\d+)(?:\.([1-9]\d*))?_0\.([1-9]\d*)$")
-_PREREQ_OLD_UNDER_RE = re.compile(r"^(\d+)(?:\.([1-9]\d*))?_0$")
-_PREREQ_OLD_DOT_RE = re.compile(r"^(\d+)\.0(?:([A-Za-z])|\.(\d+))?$")
+_PREREQ_RE = re.compile(r"^(\d+)(?:\.([1-9]\d*))?_0\.([1-9]\d*)$")
 _MAIN_CARD_RE = re.compile(r"^(\d+)(?:\.([1-9]\d*))?$")
 _IMAGE_EXTS = {".svg", ".png", ".jpg", ".jpeg", ".webp"}
-_FIRST_H1_RE = re.compile(r"^\s*#\s+[^\n]*\n?")
 _RECAP_HEADING_RE = re.compile(r"^##\s+.*已学主线")
 _RECAP_ENTRY_CARD_RE = re.compile(rf"^\s*(?:[-*+]|\d+[.)])\s*\**卡\s*({_CARD_ID_BODY})(?![\d.A-Za-z_])")
-_CORE_CONCLUSION_RE = re.compile(r"\*\*核心结论\s*[：:]\s*(.+?)\*\*", re.S)
-_CORE_CONCLUSION_ALT_RE = re.compile(r"\*\*核心结论\*\*\s*[：:]\s*([^\n]+)")
-_SOURCE_REF_RE = re.compile(
-    r"(?:"
-    r"(?<![形模方通算列简格款])式\s*(?:[(（]\s*\d+(?:[.\-]\d+)*\s*[)）]|\d+(?:[.\-]\d+)+)"
-    r"|(?<![A-Za-z0-9_])(?:Eqs?\.?)\s*(?:[(（]\s*\d+(?:[.\-]\d+)*\s*[)）]|\d+(?:[.\-]\d+)*)(?![A-Za-z0-9_])"
-    r"|(?:详见|参见|见|参考|参照)\s*(?:原书|原文|原件|教材|上文|前文|后文)?\s*(?:第\s*\d+(?:\.\d+)*\s*[章节页行]|\d+(?:\.\d+)+\s*[章节]|附录|补充推导)"
-    r"|(?:原书|原文|原件)\s*(?:第\s*\d+(?:\.\d+)*\s*[章节页]|\d+(?:\.\d+)+\s*[章节]|附录|补充推导)"
-    r"|(?<![A-Za-z0-9_])(?:Section|Sec\.|Appendix|App\.)\s*(?:\d+(?:\.\d+)*|[A-Z](?:\.\d+)?)(?![A-Za-z0-9_])"
-    r"|(?:由|据|按|根据|见)\s*(?:原书|原文|原件)?\s*(?:引理|定理|推论|命题)\s*\d+(?:[.\-]\d+)*"
-    r")",
-    re.I,
-)
 
 
 def _strip_code(text: str) -> str:
@@ -60,74 +43,26 @@ def _strip_code(text: str) -> str:
     return _INLINE_CODE_RE.sub("", no_fence)
 
 
-def _parse_card_id(
-    raw_id: str,
-) -> tuple[str, tuple[int, int, int, tuple[int, str]], bool, str | None]:
-    if m := _PREREQ_NEW_RE.match(raw_id):
+def _parse_card_id(raw_id: str) -> tuple[str, tuple[int, int, int, int]]:
+    if m := _PREREQ_RE.match(raw_id):
         main_num = int(m.group(1))
         sub_num = int(m.group(2)) if m.group(2) else 0
         prereq_num = int(m.group(3))
         base = f"{m.group(1).zfill(2)}.{sub_num}" if m.group(2) else m.group(1).zfill(2)
-        return (
-            f"{base}_0.{prereq_num}",
-            (main_num, sub_num, 0, (prereq_num, "")),
-            False,
-            None,
-        )
-    if m := _PREREQ_OLD_UNDER_RE.match(raw_id):
-        main_num = int(m.group(1))
-        sub_num = int(m.group(2)) if m.group(2) else 0
-        base = f"{m.group(1).zfill(2)}.{sub_num}" if m.group(2) else m.group(1).zfill(2)
-        return (
-            f"{base}_0",
-            (main_num, sub_num, 0, (0, "")),
-            True,
-            f"{base}_0.1",
-        )
-    if m := _PREREQ_OLD_DOT_RE.match(raw_id):
-        main_num = int(m.group(1))
-        base = m.group(1).zfill(2)
-        if m.group(2):
-            ch = m.group(2).lower()
-            idx = ord(ch) - ord("a") + 1
-            return (
-                f"{base}.0{ch}",
-                (main_num, 0, 0, (idx, ch)),
-                True,
-                f"{base}_0.{idx}",
-            )
-        if m.group(3) is not None:
-            p = int(m.group(3))
-            return (
-                f"{base}.0.{p}",
-                (main_num, 0, 0, (p, "")),
-                True,
-                f"{base}_0.{max(p, 1)}",
-            )
-        return (
-            f"{base}.0",
-            (main_num, 0, 0, (0, "")),
-            True,
-            f"{base}_0.1",
-        )
+        return f"{base}_0.{prereq_num}", (main_num, sub_num, 0, prereq_num)
     if m := _MAIN_CARD_RE.match(raw_id):
         main_num = int(m.group(1))
         sub_num = int(m.group(2)) if m.group(2) else 0
         norm = f"{m.group(1).zfill(2)}.{sub_num}" if m.group(2) else m.group(1).zfill(2)
-        return (
-            norm,
-            (main_num, sub_num, 1, (0, "")),
-            False,
-            None,
-        )
-    return raw_id, (0, 0, 1, (0, raw_id)), False, None
+        return norm, (main_num, sub_num, 1, 0)
+    return raw_id, (0, 0, 1, 0)
 
 
 def _normalize_card_id(raw_id: str) -> str:
     return _parse_card_id(raw_id)[0]
 
 
-def _card_sort_key(raw_id: str) -> tuple[int, int, int, tuple[int, str]]:
+def _card_sort_key(raw_id: str) -> tuple[int, int, int, int]:
     return _parse_card_id(raw_id)[1]
 
 
@@ -267,40 +202,15 @@ def check_note_file(md_path: pathlib.Path) -> tuple[list[str], set[pathlib.Path]
     if _COLOR_CODE_RE.search(prose):
         errors.append(f"{name} 正文含禁用公式或文字染色代码")
 
-    if "！" in prose:
-        errors.append(f"{name} 正文含禁用全角感叹号 '！'")
-
     indented_math = _find_indented_math_lines(raw)
     if indented_math:
         sample = "、".join(f"第 {ln} 行({ind} 空格)" for ln, ind in indented_math[:3])
         more = f" 等 {len(indented_math)} 处" if len(indented_math) > 3 else ""
         errors.append(
-            f"{name} 存在会被 Markdown 误判为缩进代码块的含公式缩进行 ({sample}{more})，请将重载步骤改用 ### 三级小标题并令公式及说明段顶格"
+            f"{name} 存在会被 Markdown 误判为缩进代码块的含公式缩进行 ({sample}{more})，请改用顶格段落或 ### 小标题"
         )
 
     return errors, referenced
-
-
-def _is_index_doc(md_path: pathlib.Path) -> bool:
-    stem = md_path.stem
-    return stem.startswith("00_") and ("蓝图" in stem or "总图" in stem)
-
-
-def check_note_warnings(md_path: pathlib.Path) -> list[str]:
-    if _is_index_doc(md_path):
-        return []
-    try:
-        raw = md_path.read_text(encoding="utf-8")
-    except OSError:
-        return []
-    body = _FIRST_H1_RE.sub("", raw, count=1)
-    prose = _strip_code(body)
-    hits = list(dict.fromkeys(m.group(0).strip() for m in _SOURCE_REF_RE.finditer(prose)))
-    if not hits:
-        return []
-    sample = "、".join(hits[:3])
-    more = f" 等 {len(hits)} 处" if len(hits) > 3 else ""
-    return [f"{md_path.name} 正文疑似夹带原件式号或章节索引 ({sample}{more})，建议改为直接写出算式或内容说明"]
 
 
 def _parse_blueprint_cards(blueprint_path: pathlib.Path) -> list[str]:
@@ -348,16 +258,12 @@ def check_notes_dir(dir_path: pathlib.Path) -> tuple[list[str], list[str], dict]
 
     all_refs: set[pathlib.Path] = set()
     disk_cards: dict[str, pathlib.Path] = {}
-    legacy_suggestions: dict[str, str] = {}
     for md in md_files:
         f_errs, f_refs = check_note_file(md)
         errors.extend(f_errs)
         all_refs.update(f_refs)
-        warnings.extend(check_note_warnings(md))
         if cm := _CARD_FILE_RE.match(md.stem):
-            cid, _, is_legacy, suggested = _parse_card_id(cm.group(1))
-            if is_legacy and suggested:
-                legacy_suggestions.setdefault(cid, suggested)
+            cid, _ = _parse_card_id(cm.group(1))
             if cid in disk_cards:
                 warnings.append(f"存在重号卡片 卡 {cid}: {disk_cards[cid].name} 与 {md.name}")
             else:
@@ -372,35 +278,29 @@ def check_notes_dir(dir_path: pathlib.Path) -> tuple[list[str], list[str], dict]
                 warnings.append(f"assets/{img.name} 未被任何笔记 .md 引用（疑似孤儿图）")
 
     blueprint = dir_path / "00_伴学脉络蓝图.md"
-    summary_card = dir_path / "01_全篇脉络总卡.md"
-    has_summary_card = summary_card.is_file()
     planned_ids = _parse_blueprint_cards(blueprint) if blueprint.is_file() else []
     skipped_ids = _parse_skipped_cards(blueprint) if blueprint.is_file() else set()
-    for cid in planned_ids:
-        norm_cid, _, is_legacy, suggested = _parse_card_id(cid)
-        if is_legacy and suggested:
-            legacy_suggestions.setdefault(norm_cid, suggested)
-    for cid, suggested in sorted(legacy_suggestions.items(), key=lambda kv: _card_sort_key(kv[0])):
-        warnings.append(f"检测到旧版先修编号 卡 {cid}，建议改用 卡 {suggested}")
 
     missing_cards: list[str] = []
-    if planned_ids and not has_summary_card:
-        for cid in planned_ids:
-            if cid not in disk_cards and cid not in skipped_ids:
-                missing_cards.append(cid)
-                warnings.append(f"蓝图计划卡 卡 {cid} 尚未落盘")
+    for cid in planned_ids:
+        if cid not in disk_cards and cid not in skipped_ids:
+            missing_cards.append(cid)
+            warnings.append(f"蓝图计划卡 卡 {cid} 尚未落盘")
 
     latest_card = (
         sorted(disk_cards.items(), key=lambda kv: (_card_sort_key(kv[0]), kv[1].name))[-1][1].name
         if disk_cards
-        else (summary_card.name if has_summary_card else "")
+        else ""
     )
-    skipped_count = len((skipped_ids & set(planned_ids)) - set(disk_cards)) if planned_ids else len(skipped_ids - set(disk_cards))
+    skipped_count = (
+        len((skipped_ids & set(planned_ids)) - set(disk_cards))
+        if planned_ids
+        else len(skipped_ids - set(disk_cards))
+    )
     summary = {
         "md_count": len(md_files),
         "card_count": len(disk_cards),
         "skipped_count": skipped_count,
-        "has_summary_card": has_summary_card,
         "latest_card": latest_card,
         "planned_count": len(planned_ids),
         "missing_cards": missing_cards,
@@ -410,116 +310,9 @@ def check_notes_dir(dir_path: pathlib.Path) -> tuple[list[str], list[str], dict]
     return errors, warnings, summary
 
 
-def _extract_card_label_and_conclusion(md_path: pathlib.Path) -> tuple[str, str]:
-    try:
-        raw = md_path.read_text(encoding="utf-8")
-    except OSError:
-        return md_path.stem, "（无法读取文件）"
-
-    lines = raw.splitlines()
-    label = md_path.stem
-    for line in lines:
-        s = line.strip()
-        if s.startswith("# "):
-            cleaned = re.sub(r"\s*[（(][^）)]*[）)]\s*$", "", s[2:].strip()).strip()
-            if cleaned:
-                label = cleaned
-            break
-
-    conclusion = ""
-    if m := _CORE_CONCLUSION_RE.search(raw):
-        conclusion = re.sub(r"\s+", " ", m.group(1)).strip(" ：:*")
-    elif m := _CORE_CONCLUSION_ALT_RE.search(raw):
-        conclusion = re.sub(r"\s+", " ", m.group(1)).strip(" ：:*")
-
-    if not conclusion:
-        body = _strip_code(_FIRST_H1_RE.sub("", raw, count=1))
-        in_math = False
-        for line in body.splitlines():
-            s = line.strip()
-            if s.startswith("$$"):
-                if s.count("$$") == 1:
-                    in_math = not in_math
-                continue
-            if in_math or not s or s.startswith(("#", "![", ">", "---", "|", "- **")):
-                continue
-            s = re.sub(r"\s+", " ", s)
-            conclusion = s[:77] + "..." if len(s) > 80 else s
-            break
-
-    return label, conclusion or "未提取到核心结论"
-
-
-def recap_notes_dir(dir_path: pathlib.Path) -> tuple[str, list[str]]:
-    blueprint = dir_path / "00_伴学脉络蓝图.md"
-    if blueprint.is_file():
-        try:
-            bp_lines = blueprint.read_text(encoding="utf-8").splitlines()
-        except OSError:
-            bp_lines = []
-        in_recap = False
-        collected: list[str] = []
-        for line in bp_lines:
-            s = line.rstrip()
-            stripped = s.strip()
-            if not in_recap:
-                if _RECAP_HEADING_RE.match(stripped):
-                    in_recap = True
-                continue
-            if re.match(r"^##\s+\S", stripped):
-                break
-            if not stripped or stripped == "---" or stripped.startswith("<!--"):
-                continue
-            if (stripped.startswith("（") and stripped.endswith("）")) or (stripped.startswith("(") and stripped.endswith(")")):
-                continue
-            collected.append(s)
-        if collected:
-            return "blueprint", collected
-
-    card_items: list[tuple[tuple[int, int, int, tuple[int, str]], str, bool, pathlib.Path]] = []
-    for md in sorted(p for p in dir_path.glob("*.md") if p.is_file()):
-        if cm := _CARD_FILE_RE.match(md.stem):
-            cid, sort_key, _, _ = _parse_card_id(cm.group(1))
-            is_prereq = bool(
-                _PREREQ_NEW_RE.match(cid)
-                or _PREREQ_OLD_UNDER_RE.match(cid)
-                or _PREREQ_OLD_DOT_RE.match(cid)
-            )
-            card_items.append((sort_key, md.name, is_prereq, md))
-
-    if card_items:
-        card_items.sort(key=lambda item: (item[0], item[1]))
-        out: list[str] = []
-        for _, _, is_prereq, md in card_items:
-            label, conclusion = _extract_card_label_and_conclusion(md)
-            prefix = "  - " if is_prereq else "- "
-            out.append(f"{prefix}**{label}**：{conclusion}")
-        return "cards", out
-
-    summary_card = dir_path / "01_全篇脉络总卡.md"
-    if summary_card.is_file():
-        try:
-            raw_sum = summary_card.read_text(encoding="utf-8")
-        except OSError:
-            raw_sum = ""
-        matches = sorted(
-            [*_CORE_CONCLUSION_RE.finditer(raw_sum), *_CORE_CONCLUSION_ALT_RE.finditer(raw_sum)],
-            key=lambda m: m.start(),
-        )
-        hits = [re.sub(r"\s+", " ", m.group(1)).strip(" ：:*") for m in matches]
-        if hits:
-            return "summary_card", [f"- {h}" for h in hits]
-        headings = [line.strip()[3:].strip() for line in raw_sum.splitlines() if line.strip().startswith("## ")]
-        if headings:
-            return "summary_card", [f"- {h}" for h in headings]
-
-    return "empty", []
-
-
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="伴学落盘笔记与配图完整度体检工具")
     ap.add_argument("target", type=pathlib.Path, help="待检查的单张笔记 .md 文件或笔记目录路径")
-    ap.add_argument("--recap", action="store_true", help="打印蓝图已学主线账本，缺节时兜底抓取已归档卡片核心结论")
     args = ap.parse_args(argv)
     target = args.target
 
@@ -527,33 +320,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[FAIL] 目标不存在: {target}", file=sys.stderr)
         return 1
 
-    if args.recap:
-        recap_dir = target.parent if target.is_file() else target
-        source, lines = recap_notes_dir(recap_dir)
-        if source == "blueprint":
-            print(f"[RECAP] 来源: 蓝图主线账本 (共 {len(lines)} 条)")
-        elif source == "cards":
-            print(f"[RECAP] 来源: 已归档卡片核心结论兜底 (共 {len(lines)} 张)")
-        elif source == "summary_card":
-            print(f"[RECAP] 来源: 全篇脉络总卡 (共 {len(lines)} 条)")
-        else:
-            print("[RECAP] 暂无已归档卡片或主线记录")
-            return 0
-        for line in lines:
-            print(line)
-        return 0
-
     if target.is_file():
         errors, refs = check_note_file(target)
         if errors:
             print("[FAIL] 笔记单卡体检未通过:\n- " + "\n- ".join(errors), file=sys.stderr)
             return 1
-        if cm := _CARD_FILE_RE.match(target.stem):
-            cid, _, is_legacy, suggested = _parse_card_id(cm.group(1))
-            if is_legacy and suggested:
-                print(f"[WARN] 检测到旧版先修编号 卡 {cid}，建议改用 卡 {suggested}")
-        for w in check_note_warnings(target):
-            print(f"[WARN] {w}")
         print(f"[PASS] 单卡体检通过: {target.name}（引用配图 {len(refs)} 张）")
         return 0
 
@@ -566,14 +337,11 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         latest = summary.get("latest_card") or "无"
         skipped_note = f"（未落盘 {summary['skipped_count']} 张）" if summary.get("skipped_count") else ""
-        mode_note = (
-            "含全篇脉络总卡"
-            if summary.get("has_summary_card")
-            else f"已存卡片 {summary.get('card_count', 0)}/{summary.get('planned_count', 0) or summary.get('card_count', 0)} 张{skipped_note}"
-        )
+        total_planned = summary.get("planned_count", 0) or summary.get("card_count", 0)
         print(
             f"[PASS] 笔记目录体检通过: {target.name} | 共 {summary.get('md_count', 0)} 份文档 | "
-            f"{mode_note} | 最新: {latest} | 引用配图 {summary.get('referenced_asset_count', 0)} 张"
+            f"已存卡片 {summary.get('card_count', 0)}/{total_planned} 张{skipped_note} | "
+            f"最新: {latest} | 引用配图 {summary.get('referenced_asset_count', 0)} 张"
         )
         return 0
 

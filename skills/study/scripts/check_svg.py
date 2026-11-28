@@ -30,18 +30,6 @@ _LATEX_CMD_RE = re.compile(
     r"Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega)\b"
 )
 _INLINE_LATEX_RE = re.compile(r"(?<!\d)\$(?=[A-Za-z\\{])[^$\n]{1,50}\$")
-_SOURCE_REF_RE = re.compile(
-    r"(?:"
-    r"(?<![形模方通算列简格款])式\s*(?:[(（]\s*\d+(?:[.\-]\d+)*\s*[)）]|\d+(?:[.\-]\d+)+)"
-    r"|(?<![A-Za-z0-9_])(?:Eqs?\.?)\s*(?:[(（]\s*\d+(?:[.\-]\d+)*\s*[)）]|\d+(?:[.\-]\d+)*)(?![A-Za-z0-9_])"
-    r"|(?:详见|参见|见|参考|参照)\s*(?:原书|原文|原件|教材|上文|前文|后文)?\s*(?:第\s*\d+(?:\.\d+)*\s*[章节页行]|\d+(?:\.\d+)+\s*[章节]|附录|补充推导)"
-    r"|(?:原书|原文|原件)\s*(?:第\s*\d+(?:\.\d+)*\s*[章节页]|\d+(?:\.\d+)+\s*[章节]|附录|补充推导)"
-    r"|(?<!\d)\d+(?:\.\d+)+\s*节|补充推导|附录\s*[A-Za-z0-9一二三四五六七八九十]+"
-    r"|(?<![A-Za-z0-9_])(?:Section|Sec\.|Appendix|App\.)\s*(?:\d+(?:\.\d+)*|[A-Z](?:\.\d+)?)(?![A-Za-z0-9_])"
-    r"|(?:由|据|按|根据|见)\s*(?:原书|原文|原件)?\s*(?:引理|定理|推论|命题)\s*\d+(?:[.\-]\d+)*"
-    r")",
-    re.I,
-)
 _NAMED_COLORS = {
     "red": (1.0, 0.0, 0.0),
     "blue": (0.0, 0.0, 1.0),
@@ -475,8 +463,8 @@ def check_svg_text(raw_text: str) -> list[str]:
         issues.append("缺少覆盖底部的柔和浅底背景 <rect>（防暗黑模式黑字隐身）")
 
     hue_clusters = _cluster_main_hues(raw_colors)
-    if len(hue_clusters) > 3:
-        issues.append(f"整图主色系达 {len(hue_clusters)} 种，超过 3 种上限")
+    if len(hue_clusters) > 4:
+        issues.append(f"整图主色系达 {len(hue_clusters)} 种，超过 4 种上限")
 
     for _, rb, _, is_bg in rects:
         if is_bg:
@@ -488,8 +476,6 @@ def check_svg_text(raw_text: str) -> list[str]:
         short = label[:12]
         if _LATEX_CMD_RE.search(label) or _INLINE_LATEX_RE.search(label):
             issues.append(f"手写 SVG 含未渲染 LaTeX 源码 {short!r}（请改写可读 Unicode 字符或纯文本）")
-        if m_ref := _SOURCE_REF_RE.search(label):
-            issues.append(f"手写 SVG 夹带原件式号或章节索引 {m_ref.group(0)!r}（图内请直接写算式、符号或人话说明）")
         if tb[0] < vx - 2 or tb[1] < vy - 2 or tb[2] > vx + vw + 2 or tb[3] > vy + vh + 2:
             issues.append(f"文字 {short!r} 越出 viewBox 边界")
 

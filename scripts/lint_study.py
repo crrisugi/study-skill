@@ -85,24 +85,8 @@ def check_docs_and_assets() -> list[str]:
 
     disk_refs = {p.name for p in REFS_DIR.glob("*.md")} if REFS_DIR.exists() else set()
     linked_refs = set(re.findall(r"\(references/([a-zA-Z0-9_-]+\.md)\)", study_raw))
-    if not disk_refs:
-        errs.append("缺失 study/references/*.md 草稿纸表征核心子文件")
-    if disk_refs != linked_refs:
-        missing_on_disk = sorted(linked_refs - disk_refs)
-        unregistered = sorted(disk_refs - linked_refs)
-        if missing_on_disk:
-            errs.append(f"SKILL.md 表征表存在断链文件: {missing_on_disk}")
-        if unregistered:
-            errs.append(f"references/ 存在未注册到 SKILL.md 表征表的孤儿文件: {unregistered}")
-
-    for ref in sorted(REFS_DIR.glob("*.md")):
-        ref_text = ref.read_text(encoding="utf-8")
-        n = len(ref_text.splitlines())
-        if not (15 <= n <= 35):
-            errs.append(f"{ref.name} 行数越界: {n} (要求 15~35)")
-        slots = re.findall(r"^## (\d+)\.\s+\S+", ref_text, flags=re.M)
-        if slots != ["1", "2", "3", "4"]:
-            errs.append(f"{ref.name} 未严格遵循四槽同构标题 (## 1. ~ ## 4.): 实测 {slots}")
+    if disk_refs or linked_refs:
+        errs.append(f"references/ 已裁撤归位，不应残留表征子文件或链接: disk={sorted(disk_refs)}, linked={sorted(linked_refs)}")
 
     disk_wfs = {p.name for p in WORKFLOWS_DIR.glob("*.md")} if WORKFLOWS_DIR.exists() else set()
     linked_wfs = set(re.findall(r"\(workflows/([a-zA-Z0-9_-]+\.md)\)", study_raw))
@@ -136,8 +120,9 @@ def check_docs_and_assets() -> list[str]:
                 errs.append(f"仓库根目录 VERSION ({root_ver}) 与 study/VERSION ({study_ver}) 不一致")
 
     wf_files = sorted(WORKFLOWS_DIR.glob("*.md")) if WORKFLOWS_DIR.exists() else []
+    ref_files = sorted(REFS_DIR.glob("*.md")) if REFS_DIR.exists() else []
     base_dir = REPO_ROOT or STUDY_DIR.parent
-    spec_docs = [STUDY_MD, FEEDBACK_MD, *wf_files, *sorted(REFS_DIR.glob("*.md"))]
+    spec_docs = [STUDY_MD, FEEDBACK_MD, *wf_files, *ref_files]
     for doc in spec_docs:
         raw_doc = doc.read_text(encoding="utf-8")
         prose = strip_code_and_templates(raw_doc)
@@ -158,7 +143,7 @@ def check_docs_and_assets() -> list[str]:
         STUDY_VERSION,
         FEEDBACK_MD,
         *wf_files,
-        *sorted(REFS_DIR.glob("*.md")),
+        *ref_files,
         PLOT_HELPER,
         CHECK_SVG,
         CHECK_NOTES,
@@ -246,7 +231,7 @@ def smoke_test_plot() -> list[str]:
             "dbuf = io.StringIO()\n"
             "with contextlib.redirect_stderr(dbuf):\n"
             "    fig_d, ax_d = ph.new_fig()\n"
-            "    for c in (ph.COLORS['blue'], ph.COLORS['red'], ph.COLORS['green'], ph.COLORS['orange']):\n"
+            "    for c in (ph.COLORS['blue'], ph.COLORS['red'], ph.COLORS['green'], ph.COLORS['orange'], '#7C3AED'):\n"
             "        ax_d.plot([0, 1], [0.5, 0.5], color=c)\n"
             "    ax_d.text(0.5, 0.5, '重甲')\n"
             "    ax_d.text(0.51, 0.51, '重乙')\n"
@@ -277,14 +262,14 @@ def smoke_test_plot() -> list[str]:
             "assert '图例框' in lbbuf.getvalue(), lbbuf.getvalue()\n"
             "fig_dg, ax_dg = ph.new_diagram()\n"
             "b1 = ph.draw_box(ax_dg, (2.5, 2.4), '纵向消元\\n' + r'$\\frac{\\partial E_x}{\\partial z}$')\n"
-            "b2 = ph.draw_box(ax_dg, (7.5, 2.4), r'块矩阵 $\\mathbf{A}^\\top$', size=(2.6, 1.1), color=ph.COLORS['green'])\n"
+            "b2 = ph.draw_box(ax_dg, (7.5, 2.4), r'块矩阵 $\\mathbf{A}^\\top$ 与 $\\mathcal{F}_k[\\mathcal{E}]$', size=(2.9, 1.1), color=ph.COLORS['green'])\n"
             "ph.flow_arrow(ax_dg, b1, b2, label=r'消去 $E_z$')\n"
             "dg_buf = io.StringIO()\n"
             "with contextlib.redirect_stderr(dg_buf):\n"
             "    s_dg = ph.save_svg(fig_dg)\n"
             "assert '[plot_helper 自检提示]' not in dg_buf.getvalue(), dg_buf.getvalue()\n"
             "assert '<svg' in s_dg and '#f8fafc' in s_dg.lower()\n"
-            "for bad_txt in (r'$\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}$', r'$\\text{中文}$', '按式 3.12 消元'):\n"
+            "for bad_txt in (r'$\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}$', r'$\\text{中文}$'):\n"
             "    try:\n"
             "        fig_bad, ax_bad = ph.new_diagram()\n"
             "        ph.draw_box(ax_bad, (5.0, 2.4), bad_txt)\n"
@@ -293,8 +278,8 @@ def smoke_test_plot() -> list[str]:
             "    except ValueError:\n"
             "        pass\n"
             "fig_mc, ax_mc = ph.new_diagram()\n"
-            "for idx, col in enumerate((ph.COLORS['blue'], ph.COLORS['red'], ph.COLORS['green'], ph.COLORS['orange'])):\n"
-            "    ph.draw_box(ax_mc, (1.5 + idx * 2.2, 2.4), f'块 {idx}', color=col)\n"
+            "for idx, col in enumerate((ph.COLORS['blue'], ph.COLORS['red'], ph.COLORS['green'], ph.COLORS['orange'], '#7C3AED')):\n"
+            "    ph.draw_box(ax_mc, (1.2 + idx * 1.8, 2.4), f'块 {idx}', color=col)\n"
             "mc_buf = io.StringIO()\n"
             "with contextlib.redirect_stderr(mc_buf):\n"
             "    ph.save_svg(fig_mc)\n"
@@ -410,34 +395,25 @@ def smoke_test_check_svg() -> list[str]:
             r'<text x="40" y="60" font-size="13">路径\n示例 售价$100 变量$HOME</text></svg>'
         )
         assert mod.check_svg_text(safe_text_svg) == []
-        for bad_label in ("按式 3.12 求导", "Eq. (3) 代入", "见 3.2 节", "原书补充推导", "由引理 2.3 得"):
-            ref_svg = (
-                '<svg viewBox="0 0 400 160"><rect x="0" y="0" width="400" height="160" fill="#f4f6f8"/>'
-                f'<text x="40" y="60" font-size="13">{bad_label}</text></svg>'
-            )
-            assert any("原件式号或章节索引" in x for x in mod.check_svg_text(ref_svg)), bad_label
-        safe_ref_svg = (
-            '<svg viewBox="0 0 500 160"><rect x="0" y="0" width="500" height="160" fill="#f4f6f8"/>'
-            '<text x="40" y="60" font-size="13">形式(1) 链式法则 第 1 步 模式 2</text></svg>'
-        )
-        assert mod.check_svg_text(safe_ref_svg) == []
 
-        four_colors = (
-            '<svg viewBox="0 0 400 160"><rect x="0" y="0" width="400" height="160" fill="#f4f6f8"/>'
+        five_colors = (
+            '<svg viewBox="0 0 460 160"><rect x="0" y="0" width="460" height="160" fill="#f4f6f8"/>'
             '<rect x="20" y="20" width="60" height="40" fill="#2563EB"/>'
             '<rect x="100" y="20" width="60" height="40" fill="#DC2626"/>'
             '<rect x="180" y="20" width="60" height="40" fill="#059669"/>'
-            '<rect x="260" y="20" width="60" height="40" fill="#7C3AED"/></svg>'
+            '<rect x="260" y="20" width="60" height="40" fill="#D97706"/>'
+            '<rect x="340" y="20" width="60" height="40" fill="#7C3AED"/></svg>'
         )
-        assert any("主色系" in x for x in mod.check_svg_text(four_colors))
-        same_hues = (
+        assert any("主色系" in x for x in mod.check_svg_text(five_colors))
+        four_ok = (
             '<svg viewBox="0 0 400 160"><rect x="0" y="0" width="400" height="160" fill="#f4f6f8"/>'
             '<rect x="20" y="20" width="60" height="40" fill="#BFDBFE" stroke="#2563EB"/>'
             '<rect x="100" y="20" width="60" height="40" fill="#FEE2E2" stroke="#DC2626"/>'
             '<rect x="180" y="20" width="60" height="40" fill="#DCFCE7" stroke="#059669"/>'
+            '<rect x="260" y="20" width="60" height="40" fill="#FEF3C7" stroke="#D97706"/>'
             '<text x="30" y="100" fill="#334155">中性灰文字</text></svg>'
         )
-        assert mod.check_svg_text(same_hues) == []
+        assert mod.check_svg_text(four_ok) == []
 
         with tempfile.TemporaryDirectory() as tmp:
             tdir = pathlib.Path(tmp)
@@ -501,36 +477,24 @@ def smoke_test_check_notes() -> list[str]:
             )
             good_card = root / "卡01_示例.md"
             good_card.write_text(
-                "# 卡 01｜示例（原位置：第 3.2 节）\n\n算例阶乘 `5!` 与推导 $n! = n(n-1)!$，按形式(1)和链式法则在 `forward()` 运行 5 sec（App 1）。\n\n"
+                "# 卡 01｜示例（原位置：第 3.2 节）\n\n算例阶乘 `5!` 与推导 $n! = n(n-1)!$，对应 Eq. (3)！\n\n"
                 "![图注](assets/卡01_示例.svg)\n![原图](assets/卡01_原图.png)\n\n"
                 "```html\n<agent-embed src=\"demo.html\"></agent-embed>\n```\n",
                 encoding="utf-8",
             )
             errs_good, refs_good = mod.check_note_file(good_card)
             assert errs_good == [] and len(refs_good) == 2, errs_good
-            assert mod.check_note_warnings(good_card) == []
-            assert mod.check_note_warnings(root / "00_伴学脉络蓝图.md") == []
-
-            warn_card = root / "卡02_含索引.md"
-            warn_card.write_text(
-                "# 卡 02｜含索引（原位置：第 3.3 节）\n\n由式 3.12 与 Eq. (3) 可得，详见 3.2 节与原书补充推导，代码见第 142 行，由引理 2.3 得。\n",
-                encoding="utf-8",
-            )
-            w_errs, _ = mod.check_note_file(warn_card)
-            w_warns = mod.check_note_warnings(warn_card)
-            assert w_errs == [] and len(w_warns) == 1 and "式 3.12" in w_warns[0], (w_errs, w_warns)
-            warn_card.unlink()
 
             bad_card = root / "卡99_脏稿.md"
             bad_card.write_text(
                 '<agent-embed src="bad.html"></agent-embed>\n'
                 "![坏图1](D:/abs/bad.svg)\n"
                 "![坏图2](assets/不存在.svg)\n"
-                r"这里有 $\textcolor{red}{x}$ 与感叹号！" + "\n",
+                r"这里有 $\textcolor{red}{x}$。" + "\n",
                 encoding="utf-8",
             )
             errs_bad, _ = mod.check_note_file(bad_card)
-            assert len(errs_bad) >= 5, errs_bad
+            assert len(errs_bad) >= 4, errs_bad
             bad_card.unlink()
 
             indent_bad = root / "卡98_缩进公式.md"
@@ -561,10 +525,6 @@ def smoke_test_check_notes() -> list[str]:
             assert any("孤儿原图.png" in w for w in d_warns)
             assert any("卡 02" in w for w in d_warns)
 
-            (root / "01_全篇脉络总卡.md").write_text("# 总卡\n", encoding="utf-8")
-            _, d_warns_sum, _ = mod.check_notes_dir(root)
-            assert not any("卡 02" in w for w in d_warns_sum)
-
             std_dir = pathlib.Path(tmp) / "std_prereq"
             std_dir.mkdir()
             (std_dir / "00_伴学脉络蓝图.md").write_text(
@@ -574,22 +534,18 @@ def smoke_test_check_notes() -> list[str]:
                 "| 卡 02_0.1 | 先修一 | 测 |\n"
                 "| 卡 02_0.2 | 先修二 | 测 |\n"
                 "| 卡 02（核心） | 目标卡 | 测 |\n"
-                "| 卡 03.1_0.1 | 子卡先修 | 测 |\n"
                 "| 卡 03.1 | 子卡一 | 测 |\n"
-                "| 卡 10 | 十号卡 | 测 |\n"
-                "| 卡 02.0xyz | 非法格式 | 测 |\n",
+                "| 卡 10 | 十号卡 | 测 |\n",
                 encoding="utf-8",
             )
             planned_std = mod._parse_blueprint_cards(std_dir / "00_伴学脉络蓝图.md")
-            assert planned_std == ["01_0.1", "01", "02_0.1", "02_0.2", "02", "03.1_0.1", "03.1", "10"], planned_std
-            assert "02.0" not in planned_std
+            assert planned_std == ["01_0.1", "01", "02_0.1", "02_0.2", "02", "03.1", "10"], planned_std
 
             for fname in (
                 "卡01_0.1_先修零.md",
                 "卡01_首卡.md",
                 "卡02_0.1_先修一.md",
                 "卡02_0.5倍频采样.md",
-                "卡03.1_0.1_子卡先修.md",
                 "卡03.1_子卡一.md",
                 "卡10_十号卡.md",
             ):
@@ -599,14 +555,13 @@ def smoke_test_check_notes() -> list[str]:
             assert m_half and mod._normalize_card_id(m_half.group(1)) == "02"
             assert m_zero and mod._normalize_card_id(m_zero.group(1)) == "02"
 
-            order_ids = ["02_0.1", "02_0.2", "02", "03.1_0.1", "03.1", "10"]
+            order_ids = ["02_0.1", "02_0.2", "02", "03.1", "10"]
             assert sorted(order_ids, key=mod._card_sort_key) == order_ids
 
             s_errs, s_warns, s_sum = mod.check_notes_dir(std_dir)
-            assert s_errs == [] and s_sum["card_count"] == 7, (s_errs, s_sum)
+            assert s_errs == [] and s_sum["card_count"] == 6, (s_errs, s_sum)
             assert s_sum["missing_cards"] == ["02_0.2"], s_sum["missing_cards"]
             assert any("卡 02_0.2" in w for w in s_warns), s_warns
-            assert not any("旧版先修编号" in w for w in s_warns), s_warns
             assert s_sum["latest_card"] == "卡10_十号卡.md", s_sum["latest_card"]
 
             (std_dir / "卡02_0.2_先修二.md").write_text("# 先修二\n", encoding="utf-8")
@@ -615,68 +570,6 @@ def smoke_test_check_notes() -> list[str]:
             _, dup_warns, dup_sum = mod.check_notes_dir(std_dir)
             assert dup_sum["missing_cards"] == [], dup_sum["missing_cards"]
             assert any("重号卡片 卡 02" in w for w in dup_warns), dup_warns
-
-            legacy_dir = pathlib.Path(tmp) / "legacy_prereq"
-            legacy_dir.mkdir()
-            (legacy_dir / "00_伴学脉络蓝图.md").write_text(
-                "| 顺序 | 主题 | 说明 |\n| :--- | :--- | :--- |\n"
-                "| 卡 02.0a | 旧字母 | 测 |\n"
-                "| 卡 02.0.1 | 旧三级 | 测 |\n"
-                "| 卡 03.0 | 旧单卡 | 测 |\n",
-                encoding="utf-8",
-            )
-            for fname in ("卡02.0a_旧字母.md", "卡02.0.1_旧三级.md", "卡03.0_旧单卡.md"):
-                (legacy_dir / fname).write_text("# 旧版\n", encoding="utf-8")
-            l_errs, l_warns, l_sum = mod.check_notes_dir(legacy_dir)
-            assert l_errs == [] and l_sum["missing_cards"] == [], (l_errs, l_sum)
-            assert sum(1 for w in l_warns if "旧版先修编号" in w) == 3, l_warns
-            assert l_sum["latest_card"] == "卡03.0_旧单卡.md", l_sum["latest_card"]
-
-            bp_recap_dir = pathlib.Path(tmp) / "bp_recap"
-            bp_recap_dir.mkdir()
-            (bp_recap_dir / "00_伴学脉络蓝图.md").write_text(
-                "# 00｜学习脉络：回看测试\n\n"
-                "## 三、已学主线与阶段收获\n"
-                "（开局暂留空；模板提示应跳过。）\n"
-                "- **卡 01**：立清初始缺口，引入补充假设。\n"
-                "- **卡 02**：推通变换表达式并核对边界。\n\n"
-                "## 四、跨文档符号对照表\n"
-                "- 应被截断。\n",
-                encoding="utf-8",
-            )
-            r_src1, r_lines1 = mod.recap_notes_dir(bp_recap_dir)
-            assert r_src1 == "blueprint" and len(r_lines1) == 2, (r_src1, r_lines1)
-            assert "卡 01" in r_lines1[0] and "卡 02" in r_lines1[1], r_lines1
-
-            cards_recap_dir = pathlib.Path(tmp) / "cards_recap"
-            cards_recap_dir.mkdir()
-            (cards_recap_dir / "00_伴学脉络蓝图.md").write_text("# 00｜旧版无主线蓝图\n", encoding="utf-8")
-            (cards_recap_dir / "卡02_0.1_先修.md").write_text("# 卡 02_0.1｜先修（先修铺垫）\n\n**核心结论：先修结论。**\n", encoding="utf-8")
-            (cards_recap_dir / "卡02_正卡.md").write_text("# 卡 02｜正卡（原位置：1.2）\n\n**核心结论：正卡结论。**\n", encoding="utf-8")
-            (cards_recap_dir / "卡10_末卡.md").write_text("# 卡 10｜末卡（原位置：1.9）\n\n**核心结论：末卡结论。**\n", encoding="utf-8")
-            r_src2, r_lines2 = mod.recap_notes_dir(cards_recap_dir)
-            assert r_src2 == "cards" and len(r_lines2) == 3, (r_src2, r_lines2)
-            assert r_lines2[0].startswith("  - **卡 02_0.1｜先修**：先修结论。"), r_lines2
-            assert r_lines2[1].startswith("- **卡 02｜正卡**：正卡结论。"), r_lines2
-            assert r_lines2[2].startswith("- **卡 10｜末卡**：末卡结论。"), r_lines2
-
-            quote_recap_dir = pathlib.Path(tmp) / "quote_recap"
-            quote_recap_dir.mkdir()
-            (quote_recap_dir / "卡01_引用框.md").write_text(
-                "# 卡 01｜引用框（原位置：1.1）\n\n---\n\n> **核心结论**：引用框核心结论。\n>\n> **成立前提**：参数非零。\n",
-                encoding="utf-8",
-            )
-            q_src, q_lines = mod.recap_notes_dir(quote_recap_dir)
-            assert q_src == "cards" and q_lines == ["- **卡 01｜引用框**：引用框核心结论。"], (q_src, q_lines)
-
-            sum_recap_dir = pathlib.Path(tmp) / "sum_recap"
-            sum_recap_dir.mkdir()
-            (sum_recap_dir / "01_全篇脉络总卡.md").write_text(
-                "# 全篇总卡\n\n> **核心结论**：总卡引用框结论。\n",
-                encoding="utf-8",
-            )
-            s_src, s_lines = mod.recap_notes_dir(sum_recap_dir)
-            assert s_src == "summary_card" and s_lines == ["- 总卡引用框结论。"], (s_src, s_lines)
 
             skipped_dir = pathlib.Path(tmp) / "skipped_cards"
             skipped_dir.mkdir()
@@ -876,7 +769,6 @@ def main() -> None:
     print(
         f"[PASS] version=v{ver_str} | study={len(study_lines)}行/{study_chars}字 | "
         f"workflows={wf_cnt}份双向对齐 | "
-        f"refs={len(list(REFS_DIR.glob('*.md')))}份四槽双向对齐 | "
         f"study-feedback={len(FEEDBACK_MD.read_text(encoding='utf-8').splitlines())}行 | "
         f"plot_helper={len(PLOT_HELPER.read_text(encoding='utf-8').splitlines())}行 | "
         f"check_svg={len(CHECK_SVG.read_text(encoding='utf-8').splitlines())}行 | "
